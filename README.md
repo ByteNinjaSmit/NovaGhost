@@ -9,6 +9,7 @@ Desktop screen-analysis tool with an authentication backend. Triple-tap a region
 ```
 novaghost/
 ├── main.py              ← Desktop client entry point (Python / CustomTkinter)
+├── main.spec            ← PyInstaller build spec → dist/PortalClient.exe
 ├── config.py            ← Central config dataclass (env + disk settings)
 ├── core/                ← Boot sequence, single-instance guard, safe mode
 ├── ui/                  ← Login, dashboard, settings, admin portal views
@@ -18,19 +19,13 @@ novaghost/
 ├── helpers/             ← Crypto, validation, formatting, caching
 ├── utils/               ← Logging, hotkeys, alerts
 └── server/
-    ├── app.py           ← Flask auth server (local dev, port 5000)
-    ├── worker.js        ← Cloudflare Workers handler (production)
-    ├── db.py            ← SQLite schema init script (local dev only)
-    ├── schema.sql       ← D1 schema (Cloudflare deployment)
-    └── wrangler.toml    ← Wrangler config for Cloudflare deployment
+    ├── server.vps.js    ← Node.js Express auth server (VPS deployment)
+    ├── schema.sql       ← SQLite schema — applied automatically on first start
+    └── package.json     ← Node dependencies
 ```
 
-**Two backend options — same API surface:**
-
-| Mode | Runtime | Database | When to use |
-|------|---------|----------|-------------|
-| Local | Flask (Python) | SQLite (`server/auth.db`) | Development / self-hosted |
-| Cloud | Cloudflare Workers | Cloudflare D1 | Production |
+**Backend:** Node.js Express + SQLite, deployed on a VPS at `novaghost.twistark.cloud`  
+**Client:** Python desktop app compiled to `PortalClient.exe`
 
 ---
 
@@ -41,45 +36,29 @@ novaghost/
 - Windows (primary — `pywin32`, `winotify` are Windows-only)
 - At least one vision API key (Gemini, OpenAI, or OpenRouter)
 
-### Local server
-- Python 3.10+
-- `flask` and `bcrypt` (see `requirements.txt`)
-
-### Cloud server
-- Cloudflare account with Workers and D1 enabled
-- Node.js 18+ and Wrangler CLI (`npm i -g wrangler`)
+### Server (VPS)
+- Node.js 20+
+- PM2 (`npm install -g pm2`)
+- Nginx + Certbot for HTTPS
 
 ---
 
-## Quick Start (local)
+## Quick Start (development)
 
 ```bash
-# 1. Clone and enter
-git clone <repo-url>
-cd novaghost
-
-# 2. Create and activate virtualenv
+# 1. Create and activate virtualenv
 python -m venv venv
-.\venv\Scripts\activate          # Windows
-# source venv/bin/activate       # macOS/Linux
+.\venv\Scripts\activate
 
-# 3. Install dependencies
+# 2. Install dependencies
 pip install -r requirements.txt
-pip install flask bcrypt          # server extras
 
-# 4. Configure environment
-copy .env.example .env
-# Edit .env — fill in at minimum GEMINI_API_KEY
+# 3. Configure environment
+copy .env .env.local   # edit .env — fill in GEMINI_API_KEY and AUTH_SERVER_URL
 
-# 5. Initialize and start the auth server
-python server/db.py              # creates server/auth.db + seeds admin account
-python server/app.py             # starts on http://127.0.0.1:5000
-
-# 6. Launch the desktop client (separate terminal)
+# 4. Launch desktop client
 python main.py
 ```
-
-Default admin credentials after seed: `admin` / `admin123` — **change immediately**.
 
 ---
 
@@ -92,9 +71,9 @@ Default admin credentials after seed: `admin` / `admin123` — **change immediat
 | `GEMINI_API_KEY` | — | Google Gemini API key (primary provider) |
 | `OPENROUTER_API_KEY` | — | OpenRouter key (fallback provider) |
 | `OPENAI_API_KEY` | — | OpenAI key (optional) |
-| `AUTH_SERVER_URL` | `http://127.0.0.1:5000` | Auth backend URL |
-| `JWT_SECRET` | hardcoded fallback | **Must be set in production** |
-| `INIT_SECRET` | hardcoded fallback | Header secret for bootstrap registration |
+| `AUTH_SERVER_URL` | — | Auth backend URL (e.g. `https://novaghost.twistark.cloud`) |
+| `JWT_SECRET` | hardcoded fallback | **Must match VPS server .env** |
+| `INIT_SECRET` | hardcoded fallback | Header secret for bootstrap admin registration |
 | `PRIMARY_OWNER` | `admin` | Username protected from admin actions |
 | `TRIPLE_TAP_WINDOW` | `0.5` | Seconds to detect triple-tap gesture |
 | `RESPONSE_DURATION` | `2.0` | Seconds the overlay stays visible |
@@ -128,7 +107,7 @@ Configure in the **Settings** view. Primary + fallback are both supported.
 
 ## Database Schema
 
-Five tables — identical structure in SQLite (local) and Cloudflare D1 (cloud):
+Five tables in SQLite (`novaghost.db` on VPS):
 
 | Table | Purpose |
 |-------|---------|
@@ -203,7 +182,18 @@ Primary owner account (first registered or `PRIMARY_OWNER` env) is immune to ban
 - HWID binding — first login locks account to that device.
 - Clock rollback detection on client startup.
 - Single-instance mutex prevents multiple concurrent clients.
-- **Set `JWT_SECRET` in production** — the default fallback is public knowledge.
+- **Set `JWT_SECRET` in VPS `.env`** — the default fallback is public knowledge.
+
+---
+
+## Build Client Exe
+
+```powershell
+.\venv\Scripts\Activate.ps1
+pip install pyinstaller
+pyinstaller main.spec
+# Output: dist\PortalClient.exe
+```
 
 ---
 
@@ -219,13 +209,6 @@ All files written to `~/.novaghost/`:
 
 ---
 
-## Project Files
+## Server Deployment
 
-```
-requirements.txt       Python dependencies (desktop client + local server)
-server/package.json    Node dependencies (Cloudflare Workers)
-server/wrangler.toml   Cloudflare Wrangler config
-server/schema.sql      D1 schema (run once on Cloudflare)
-server/db.py           SQLite init script (local dev)
-.env.example           Environment variable template
-```
+See `DEPLOY.md` for full VPS setup guide.
