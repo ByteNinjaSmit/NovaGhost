@@ -226,6 +226,8 @@ class ActivationWindow(ctk.CTk):
         self._navigate_to("dash")
         self._sidebar.refresh_health_async()
         logger.info(f"Login success: {self.user_data.get('username')} ({role})")
+        if not config.has_primary_key():
+            self._set_status("No API key set — go to Preferences and enter your Gemini API key to use the scanner.")
 
     def _refresh_credits_background(self) -> None:
         try:
