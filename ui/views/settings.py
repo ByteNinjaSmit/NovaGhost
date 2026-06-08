@@ -1,4 +1,5 @@
 import logging
+import threading
 import tkinter.messagebox as messagebox
 import customtkinter as ctk
 from typing import Callable, Optional
@@ -70,7 +71,7 @@ class PreferencesView(ctk.CTkFrame):
         ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
         self._opt_provider = ctk.CTkOptionMenu(
             self._grid,
-            values=["gemini", "openrouter", "openai"],
+            values=["gemini", "openrouter", "openai", "ollama"],
             fg_color=_COLORS["bg"],
             button_color=_COLORS["bg"],
             button_hover_color=_COLORS["border"],
@@ -149,6 +150,52 @@ class PreferencesView(ctk.CTkFrame):
         self._ent_openrouter_key.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
         row += 1
 
+        # Ollama local provider
+        ctk.CTkLabel(
+            self._grid,
+            text="Ollama Base URL:",
+            font=ctk.CTkFont(family="Segoe UI Variable", weight="bold", size=12),
+            text_color=_COLORS["text"]
+        ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
+        self._ent_ollama_url = ctk.CTkEntry(
+            self._grid, font=ctk.CTkFont(family="Consolas"),
+            placeholder_text="http://localhost:11434",
+            fg_color=_COLORS["bg"], border_color=_COLORS["border"], height=32, corner_radius=8
+        )
+        self._ent_ollama_url.insert(0, config.OLLAMA_BASE_URL)
+        self._ent_ollama_url.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
+        row += 1
+
+        ctk.CTkLabel(
+            self._grid,
+            text="Install Ollama Model:",
+            font=ctk.CTkFont(family="Segoe UI Variable", weight="bold", size=12),
+            text_color=_COLORS["text"]
+        ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
+        ollama_btn_frm = ctk.CTkFrame(self._grid, fg_color="transparent")
+        ollama_btn_frm.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
+        ctk.CTkLabel(
+            ollama_btn_frm,
+            text="Type model name above, then:",
+            font=ctk.CTkFont(family="Segoe UI Variable", size=11),
+            text_color=_COLORS["muted"]
+        ).pack(side="left")
+        btn_install = ctk.CTkButton(
+            ollama_btn_frm,
+            text="Install Model",
+            height=28,
+            width=100,
+            fg_color="#1E1C2E",
+            hover_color=_COLORS["border"],
+            border_width=1,
+            border_color=_COLORS["border"],
+            text_color=_COLORS["accent"],
+            corner_radius=8,
+            command=self._install_ollama_model
+        )
+        btn_install.pack(side="right", padx=(8, 0))
+        row += 1
+
         # Fallback Configurations
         ctk.CTkLabel(
             self._grid,
@@ -178,7 +225,7 @@ class PreferencesView(ctk.CTkFrame):
         ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
         self._opt_fb_provider = ctk.CTkOptionMenu(
             self._grid,
-            values=["gemini", "openrouter", "openai"],
+            values=["gemini", "openrouter", "openai", "ollama"],
             fg_color=_COLORS["bg"],
             button_color=_COLORS["bg"],
             button_hover_color=_COLORS["border"],
@@ -345,6 +392,43 @@ class PreferencesView(ctk.CTkFrame):
         box_text = f"Current: {config.CROP_BOX if config.CROP_BOX else 'Full Screen'}"
         self.lbl_crop_coords.configure(text=box_text)
 
+    def _install_ollama_model(self) -> None:
+        from network.api_client import get_ollama_provider
+        model = self._ent_model.get().strip()
+        base_url = self._ent_ollama_url.get().strip() or "http://localhost:11434"
+        if not model:
+            self._set_status("Enter a model name first (e.g. moondream, llava).")
+            return
+        op = get_ollama_provider()
+        self._set_status(f"Connecting to Ollama at {base_url}...", is_error=False)
+
+        def _run():
+            if not op.is_running(base_url):
+                self.after(0, lambda: self._set_status(
+                    "Ollama not running — install from ollama.com, then restart."
+                ))
+                return
+            if op.is_model_installed(base_url, model):
+                self.after(0, lambda: self._set_status(
+                    f"✓ {model} is already installed.", is_error=False
+                ))
+                return
+
+            def _cb(msg):
+                self.after(0, lambda m=msg: self._set_status(m, is_error=False))
+
+            ok = op.pull_model(base_url, model, _cb)
+            if ok:
+                self.after(0, lambda: self._set_status(
+                    f"✓ {model} installed — ready to use.", is_error=False
+                ))
+            else:
+                self.after(0, lambda: self._set_status(
+                    f"Failed to install {model}. Check Ollama is running."
+                ))
+
+        threading.Thread(target=_run, daemon=True).start()
+
     def _set_status(self, text: str, is_error: bool = True) -> None:
         color = _COLORS["fail"] if is_error else _COLORS["pass"]
         self._lbl_status.configure(text=text, text_color=color)
@@ -379,11 +463,14 @@ class PreferencesView(ctk.CTkFrame):
             # Update configurations
             config.ACTIVE_PROVIDER = self._opt_provider.get().strip()
             config.ACTIVE_MODEL = self._ent_model.get().strip()
-            
+
             # Save API keys
             config.set_api_key("gemini", self._ent_gemini_key.get().strip())
             config.set_api_key("openai", self._ent_openai_key.get().strip())
             config.set_api_key("openrouter", self._ent_openrouter_key.get().strip())
+
+            ollama_url = self._ent_ollama_url.get().strip()
+            config.OLLAMA_BASE_URL = ollama_url if ollama_url else "http://localhost:11434"
             
             config.FALLBACK_ENABLED = bool(self._chk_fallback.get())
             config.FALLBACK_PROVIDER = self._opt_fb_provider.get().strip()

@@ -1,4 +1,6 @@
+import json
 import logging
+import threading
 import base64
 import io
 import requests
@@ -171,13 +173,144 @@ class OpenRouterVisionProvider(VisionProvider):
             logger.error(f"OpenRouter Vision call failed: {e}")
         return None
 
+class OllamaVisionProvider(VisionProvider):
+    def __init__(self):
+        self._pull_threads: dict = {}
+        self._pull_status: dict = {}
+        self._last_error: str = ""
+
+    def is_running(self, base_url: str) -> bool:
+        try:
+            r = requests.get(f"{base_url}/api/tags", timeout=3)
+            return r.status_code == 200
+        except Exception:
+            return False
+
+    def list_models(self, base_url: str) -> list:
+        try:
+            r = requests.get(f"{base_url}/api/tags", timeout=5)
+            if r.status_code == 200:
+                return [m["name"] for m in r.json().get("models", [])]
+        except Exception:
+            pass
+        return []
+
+    def is_model_installed(self, base_url: str, model: str) -> bool:
+        installed = self.list_models(base_url)
+        model_base = model.split(":")[0]
+        return any(m == model or m.startswith(model_base + ":") for m in installed)
+
+    def pull_model(self, base_url: str, model: str, status_callback=None) -> bool:
+        try:
+            r = requests.post(
+                f"{base_url}/api/pull",
+                json={"name": model, "stream": True},
+                stream=True,
+                timeout=600
+            )
+            for line in r.iter_lines():
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                except Exception:
+                    continue
+                status = data.get("status", "")
+                completed = data.get("completed", 0)
+                total = data.get("total", 0)
+                if total and completed:
+                    pct = int(completed * 100 / total)
+                    msg = f"Installing {model}: {pct}%"
+                else:
+                    msg = f"Installing {model}: {status}"
+                if status_callback:
+                    status_callback(msg)
+                if status == "success":
+                    return True
+            return True
+        except Exception as e:
+            logger.error(f"Ollama pull failed: {e}")
+            if status_callback:
+                status_callback(f"Install failed: {e}")
+            return False
+
+    def _start_pull_background(self, base_url: str, model: str) -> None:
+        if model in self._pull_threads and self._pull_threads[model].is_alive():
+            return
+        self._pull_status[model] = f"Installing {model}..."
+
+        def _pull():
+            def _cb(msg):
+                self._pull_status[model] = msg
+            ok = self.pull_model(base_url, model, _cb)
+            self._pull_status[model] = "done" if ok else "failed"
+
+        t = threading.Thread(target=_pull, daemon=True)
+        self._pull_threads[model] = t
+        t.start()
+
+    def analyze_image(self, image: Image.Image, api_key: str, model: str, timeout: int) -> Optional[str]:
+        from config import config as _cfg
+        base_url = getattr(_cfg, "OLLAMA_BASE_URL", "http://localhost:11434")
+
+        if not self.is_running(base_url):
+            self._last_error = "Ollama not running — install from ollama.com"
+            logger.error(self._last_error)
+            return None
+
+        pull_st = self._pull_status.get(model, "")
+        if pull_st and pull_st not in ("done", "failed"):
+            self._last_error = pull_st
+            return None
+
+        if not self.is_model_installed(base_url, model):
+            self._start_pull_background(base_url, model)
+            self._last_error = f"Installing {model}... (first use — triple-tap again when ready)"
+            return None
+
+        self._last_error = ""
+        try:
+            b64_data = image_to_base64(image)
+            payload = {
+                "model": model,
+                "messages": [{
+                    "role": "user",
+                    "content": self.get_system_prompt(),
+                    "images": [b64_data]
+                }],
+                "stream": False,
+                "options": {"temperature": 0.2, "num_predict": 150}
+            }
+            r = requests.post(f"{base_url}/api/chat", json=payload, timeout=timeout)
+            if r.status_code == 200:
+                content = r.json().get("message", {}).get("content", "").strip()
+                if content:
+                    return content
+            self._last_error = f"Ollama HTTP {r.status_code}"
+            logger.error(f"Ollama API returned {r.status_code}: {r.text[:200]}")
+        except Exception as e:
+            self._last_error = f"Ollama error: {e}"
+            logger.error(f"Ollama Vision call failed: {e}")
+        return None
+
+
+_ollama_provider_singleton: Optional[OllamaVisionProvider] = None
+
+def get_ollama_provider() -> OllamaVisionProvider:
+    global _ollama_provider_singleton
+    if _ollama_provider_singleton is None:
+        _ollama_provider_singleton = OllamaVisionProvider()
+    return _ollama_provider_singleton
+
+
 class ApiClient:
     def __init__(self, config: Config):
         self.config = config
         self.providers = {
             "gemini": GeminiVisionProvider(),
             "openai": OpenAiVisionProvider(),
-            "openrouter": OpenRouterVisionProvider()
+            "openrouter": OpenRouterVisionProvider(),
+            "ollama": get_ollama_provider()
         }
         self._last_error: str = ""
 
@@ -196,7 +329,8 @@ class ApiClient:
                 res = provider.analyze_image(image, api_key, model, self.config.API_TIMEOUT)
                 if res:
                     return self._clean_response(res)
-                errors.append(f"{provider_name}/{model} failed")
+                detail = getattr(provider, "_last_error", "")
+                errors.append(detail if detail else f"{provider_name}/{model} failed")
 
         if self.config.FALLBACK_ENABLED:
             fb_name = self.config.FALLBACK_PROVIDER.lower()
@@ -211,7 +345,8 @@ class ApiClient:
                     res = fb_provider.analyze_image(image, fb_key, fb_model, self.config.API_TIMEOUT)
                     if res:
                         return self._clean_response(res)
-                    errors.append(f"{fb_name}/{fb_model} failed")
+                    detail = getattr(fb_provider, "_last_error", "")
+                    errors.append(detail if detail else f"{fb_name}/{fb_model} failed")
 
         self._last_error = " | ".join(errors)
         logger.error(f"All providers failed: {self._last_error}")

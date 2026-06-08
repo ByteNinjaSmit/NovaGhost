@@ -18,12 +18,15 @@ class Config:
     ACTIVE_PROVIDER: str = "gemini"
     ACTIVE_MODEL: str = "gemini-2.5-flash-lite"
     
-    # Provider keys
+    # Provider keys (ollama uses "local" sentinel — no real key needed)
     API_KEYS: dict = field(default_factory=lambda: {
         "gemini": os.getenv("GEMINI_API_KEY", ""),
         "openrouter": os.getenv("OPENROUTER_API_KEY", ""),
-        "openai": os.getenv("OPENAI_API_KEY", "")
+        "openai": os.getenv("OPENAI_API_KEY", ""),
+        "ollama": "local"
     })
+
+    OLLAMA_BASE_URL: str = "http://localhost:11434"
     
     # Fallback configuration
     FALLBACK_ENABLED: bool = True
@@ -82,10 +85,14 @@ class Config:
                 "FALLBACK_ENABLED",
                 "FALLBACK_PROVIDER",
                 "FALLBACK_MODEL",
+                "OLLAMA_BASE_URL",
             ]
             for field_name in allowed_fields:
                 if field_name in saved_data and hasattr(self, field_name):
                     setattr(self, field_name, saved_data[field_name])
+            # Ensure ollama key always present after load
+            if isinstance(self.API_KEYS, dict):
+                self.API_KEYS.setdefault("ollama", "local")
             logger.info("Configuration preferences loaded from settings.json.")
         except Exception as e:
             logger.error(f"Failed to load settings.json: {e}")
@@ -107,6 +114,7 @@ class Config:
                 "FALLBACK_ENABLED": self.FALLBACK_ENABLED,
                 "FALLBACK_PROVIDER": self.FALLBACK_PROVIDER,
                 "FALLBACK_MODEL": self.FALLBACK_MODEL,
+                "OLLAMA_BASE_URL": self.OLLAMA_BASE_URL,
             }
             with open(self.SETTINGS_FILE, "w", encoding="utf-8") as f:
                 json.dump(serializable, f, indent=4)
@@ -115,6 +123,8 @@ class Config:
             logger.error(f"Failed to save settings.json: {e}")
 
     def get_api_key(self, provider: str) -> str:
+        if provider.lower() == "ollama":
+            return "local"
         return self.API_KEYS.get(provider.lower(), "")
 
     def set_api_key(self, provider: str, key: str) -> None:
