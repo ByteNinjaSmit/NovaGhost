@@ -34,7 +34,7 @@ novaghost/
 ### Desktop client
 - Python 3.10+
 - Windows (primary — `pywin32`, `winotify` are Windows-only)
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey) **or** [Ollama](https://ollama.com) installed locally (no key needed)
 
 ### Server (VPS)
 - Node.js 20+
@@ -96,6 +96,7 @@ pyinstaller main.spec --noconfirm
 - Active vision provider and model
 - Fallback provider and model
 - API keys (stored locally, never sent to backend)
+- Ollama base URL (default `http://localhost:11434`)
 - Crop box (screen region)
 - Triple-tap window, response duration, global shortcut
 - Answer text size (font pt), max characters on display
@@ -104,15 +105,37 @@ pyinstaller main.spec --noconfirm
 
 ## Vision Providers
 
-| Provider | Key var | Working models (free tier) |
-|----------|---------|---------------------------|
-| `gemini` | `GEMINI_API_KEY` | `gemini-2.5-flash-lite`, `gemini-3.5-flash` |
-| `openrouter` | `OPENROUTER_API_KEY` | `google/gemini-2.5-flash` |
-| `openai` | `OPENAI_API_KEY` | configurable |
+| Provider | Key required | Notes |
+|----------|-------------|-------|
+| `gemini` | `GEMINI_API_KEY` | Free tier: `gemini-2.5-flash-lite`, `gemini-3.5-flash` |
+| `openrouter` | `OPENROUTER_API_KEY` | `google/gemini-2.5-flash` and others |
+| `openai` | `OPENAI_API_KEY` | Any vision-capable model |
+| `ollama` | **None** | Local inference — no cost, no internet |
 
-> **Note:** `gemini-2.0-flash` and `gemini-1.5-flash` are either removed or require billing. Use `gemini-2.5-flash-lite` (primary) and `gemini-3.5-flash` (fallback) on the free tier.
+> **Gemini note:** `gemini-2.0-flash` and `gemini-1.5-flash` are removed or require billing on v1beta. Use `gemini-2.5-flash-lite` (primary) + `gemini-3.5-flash` (fallback) on the free tier.
 
-Configure in the **Settings** view. Primary + fallback are both supported.
+Configure in the **Settings** view. Primary + fallback both supported.
+
+### Ollama (local, offline)
+
+No API key needed. Runs entirely on your machine.
+
+**Setup:**
+1. Install Ollama from [ollama.com](https://ollama.com)
+2. In Settings → set Active Provider to `ollama`
+3. Click **Load** on the Ollama Model row — dropdown populates with installed models
+4. To install a new model: type its name in the Install field (e.g. `moondream`) → click **Install**
+
+**Recommended vision models:**
+
+| Model | Size | Notes |
+|-------|------|-------|
+| `moondream` | ~1.7 GB | Fastest, good for MCQ screenshots |
+| `llava` | ~4.1 GB | Better accuracy |
+| `llava-phi3` | ~2.9 GB | Good balance |
+| `minicpm-v` | ~5.5 GB | Best for dense text/documents |
+
+**Auto-install:** If a model isn't installed when you triple-tap, the download starts automatically in the background. The overlay shows `"Installing moondream... — triple-tap again when ready"`. No manual step needed.
 
 ---
 
@@ -122,7 +145,7 @@ Configure in the **Settings** view. Primary + fallback are both supported.
 2. **Window hides** — app withdraws to system tray
 3. **Triple-tap** — click the mouse 3× within `TRIPLE_TAP_WINDOW` seconds
 4. **Capture** — selected screen region is grabbed as PNG
-5. **AI query** — image sent to configured Gemini model via REST API
+5. **AI query** — image sent to configured provider (Gemini / OpenAI / OpenRouter / Ollama)
 6. **Overlay** — response appears at top-left of screen for `RESPONSE_DURATION` seconds
 7. **5-second cooldown** — enforced between requests to respect rate limits
 
