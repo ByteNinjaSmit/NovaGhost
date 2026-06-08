@@ -86,10 +86,10 @@ class PreferencesView(ctk.CTkFrame):
         self._opt_provider.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
         row += 1
 
-        # Model Selection
+        # Cloud provider model (Gemini / OpenAI / OpenRouter)
         ctk.CTkLabel(
             self._grid,
-            text="Active Vision Model:",
+            text="Model (Gemini / OpenAI / OpenRouter):",
             font=ctk.CTkFont(family="Segoe UI Variable", weight="bold", size=12),
             text_color=_COLORS["text"]
         ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
@@ -97,23 +97,25 @@ class PreferencesView(ctk.CTkFrame):
             self._grid, font=ctk.CTkFont(family="Consolas"),
             fg_color=_COLORS["bg"], border_color=_COLORS["border"], height=32, corner_radius=8
         )
-        self._ent_model.insert(0, config.ACTIVE_MODEL)
+        cloud_model = config.ACTIVE_MODEL if config.ACTIVE_PROVIDER != "ollama" else "gemini-2.5-flash-lite"
+        self._ent_model.insert(0, cloud_model)
         self._ent_model.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
         row += 1
 
-        # Ollama installed model picker
+        # Ollama model — independent, fetched from local Ollama instance
         ctk.CTkLabel(
             self._grid,
-            text="Ollama Installed Models:",
+            text="Ollama Model:",
             font=ctk.CTkFont(family="Segoe UI Variable", weight="bold", size=12),
-            text_color=_COLORS["muted"]
-        ).grid(row=row, column=0, padx=15, pady=8, sticky="w")
+            text_color=_COLORS["text"]
+        ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
         ollama_pick_frm = ctk.CTkFrame(self._grid, fg_color="transparent")
-        ollama_pick_frm.grid(row=row, column=1, padx=15, pady=8, sticky="ew")
+        ollama_pick_frm.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
         ollama_pick_frm.grid_columnconfigure(0, weight=1)
+        _ollama_init = config.ACTIVE_MODEL if config.ACTIVE_PROVIDER == "ollama" else "(click Refresh)"
         self._opt_ollama_model = ctk.CTkOptionMenu(
             ollama_pick_frm,
-            values=["(click Refresh to load)"],
+            values=[_ollama_init],
             fg_color=_COLORS["bg"],
             button_color=_COLORS["bg"],
             button_hover_color=_COLORS["border"],
@@ -123,8 +125,8 @@ class PreferencesView(ctk.CTkFrame):
             font=ctk.CTkFont(family="Consolas", size=12),
             height=32,
             corner_radius=8,
-            command=self._on_ollama_model_selected
         )
+        self._opt_ollama_model.set(_ollama_init)
         self._opt_ollama_model.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         btn_refresh_models = ctk.CTkButton(
             ollama_pick_frm,
@@ -215,17 +217,22 @@ class PreferencesView(ctk.CTkFrame):
         ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
         ollama_btn_frm = ctk.CTkFrame(self._grid, fg_color="transparent")
         ollama_btn_frm.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
-        ctk.CTkLabel(
+        ollama_btn_frm.grid_columnconfigure(0, weight=1)
+        self._ent_ollama_install = ctk.CTkEntry(
             ollama_btn_frm,
-            text="Type model name above, then:",
-            font=ctk.CTkFont(family="Segoe UI Variable", size=11),
-            text_color=_COLORS["muted"]
-        ).pack(side="left")
+            font=ctk.CTkFont(family="Consolas"),
+            placeholder_text="e.g. moondream, llava, llava-phi3",
+            fg_color=_COLORS["bg"],
+            border_color=_COLORS["border"],
+            height=32,
+            corner_radius=8
+        )
+        self._ent_ollama_install.grid(row=0, column=0, sticky="ew", padx=(0, 6))
         btn_install = ctk.CTkButton(
             ollama_btn_frm,
-            text="Install Model",
-            height=28,
-            width=100,
+            text="Install",
+            height=32,
+            width=70,
             fg_color="#1E1C2E",
             hover_color=_COLORS["border"],
             border_width=1,
@@ -234,7 +241,7 @@ class PreferencesView(ctk.CTkFrame):
             corner_radius=8,
             command=self._install_ollama_model
         )
-        btn_install.pack(side="right", padx=(8, 0))
+        btn_install.grid(row=0, column=1, sticky="e")
         row += 1
 
         # Fallback Configurations
@@ -461,19 +468,13 @@ class PreferencesView(ctk.CTkFrame):
 
         threading.Thread(target=_run, daemon=True).start()
 
-    def _on_ollama_model_selected(self, value: str) -> None:
-        skip = {"(click Refresh to load)", "(no models installed)", "Ollama not running"}
-        if value not in skip:
-            self._ent_model.delete(0, "end")
-            self._ent_model.insert(0, value)
-
     def _install_ollama_model(self) -> None:
         from network.api_client import get_ollama_provider
-        model = self._ent_model.get().strip()
-        base_url = self._ent_ollama_url.get().strip() or "http://localhost:11434"
+        model = self._ent_ollama_install.get().strip()
         if not model:
-            self._set_status("Enter a model name first (e.g. moondream, llava).")
+            self._set_status("Type a model name to install (e.g. moondream, llava).")
             return
+        base_url = self._ent_ollama_url.get().strip() or "http://localhost:11434"
         op = get_ollama_provider()
         self._set_status(f"Connecting to Ollama at {base_url}...", is_error=False)
 
@@ -485,8 +486,9 @@ class PreferencesView(ctk.CTkFrame):
                 return
             if op.is_model_installed(base_url, model):
                 self.after(0, lambda: self._set_status(
-                    f"✓ {model} is already installed.", is_error=False
+                    f"✓ {model} already installed.", is_error=False
                 ))
+                self.after(0, self._refresh_ollama_models)
                 return
 
             def _cb(msg):
@@ -497,6 +499,7 @@ class PreferencesView(ctk.CTkFrame):
                 self.after(0, lambda: self._set_status(
                     f"✓ {model} installed — ready to use.", is_error=False
                 ))
+                self.after(0, self._refresh_ollama_models)
             else:
                 self.after(0, lambda: self._set_status(
                     f"Failed to install {model}. Check Ollama is running."
@@ -537,7 +540,12 @@ class PreferencesView(ctk.CTkFrame):
 
             # Update configurations
             config.ACTIVE_PROVIDER = self._opt_provider.get().strip()
-            config.ACTIVE_MODEL = self._ent_model.get().strip()
+            if config.ACTIVE_PROVIDER == "ollama":
+                ollama_sel = self._opt_ollama_model.get().strip()
+                skip = {"(click Refresh)", "(no models installed)", "Ollama not running"}
+                config.ACTIVE_MODEL = ollama_sel if ollama_sel not in skip else "moondream"
+            else:
+                config.ACTIVE_MODEL = self._ent_model.get().strip()
 
             # Save API keys
             config.set_api_key("gemini", self._ent_gemini_key.get().strip())
