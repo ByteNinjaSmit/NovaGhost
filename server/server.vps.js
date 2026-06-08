@@ -163,8 +163,16 @@ app.post('/api/login', (req, res) => {
 });
 
 app.post('/api/register', (req, res) => {
-  const { username = '', password = '', hwid = '', role: requestedRole = 'user', invite_key: inviteKey = '' } = req.body;
+  const { username = '', password = '', role: requestedRole = 'user' } = req.body;
+  let { hwid = '', invite_key: inviteKey = '' } = req.body;
   const clientIP = req.ip;
+
+  // Accept invite key sent in wrong field (e.g. curl tests using hwid instead of invite_key)
+  if (!inviteKey.trim() && hwid.trim().toUpperCase().startsWith('PORTAL-')) {
+    inviteKey = hwid.trim();
+    hwid = '';
+  }
+
   if (!username.trim() || !password.trim())
     return res.status(400).json({ success: false, message: 'Username and password required' });
 
@@ -191,7 +199,7 @@ app.post('/api/register', (req, res) => {
 
   if (!isBootstrap) {
     if (!inviteKey.trim())
-      return res.status(400).json({ success: false, message: 'A valid invite/access key is required for registration.' });
+      return res.status(400).json({ success: false, message: 'An invite/access key is required. Send it as the "invite_key" field.' });
     const inviteRow = db.prepare('SELECT * FROM invite_keys WHERE key = ? AND is_used = 0').get(inviteKey.trim());
     if (!inviteRow)
       return res.status(403).json({ success: false, message: 'Invalid or already used invite/access key.' });
