@@ -101,6 +101,47 @@ class PreferencesView(ctk.CTkFrame):
         self._ent_model.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
         row += 1
 
+        # Ollama installed model picker
+        ctk.CTkLabel(
+            self._grid,
+            text="Ollama Installed Models:",
+            font=ctk.CTkFont(family="Segoe UI Variable", weight="bold", size=12),
+            text_color=_COLORS["muted"]
+        ).grid(row=row, column=0, padx=15, pady=8, sticky="w")
+        ollama_pick_frm = ctk.CTkFrame(self._grid, fg_color="transparent")
+        ollama_pick_frm.grid(row=row, column=1, padx=15, pady=8, sticky="ew")
+        ollama_pick_frm.grid_columnconfigure(0, weight=1)
+        self._opt_ollama_model = ctk.CTkOptionMenu(
+            ollama_pick_frm,
+            values=["(click Refresh to load)"],
+            fg_color=_COLORS["bg"],
+            button_color=_COLORS["bg"],
+            button_hover_color=_COLORS["border"],
+            dropdown_fg_color=_COLORS["surface"],
+            dropdown_hover_color=_COLORS["border"],
+            dropdown_text_color=_COLORS["text"],
+            font=ctk.CTkFont(family="Consolas", size=12),
+            height=32,
+            corner_radius=8,
+            command=self._on_ollama_model_selected
+        )
+        self._opt_ollama_model.grid(row=0, column=0, sticky="ew", padx=(0, 6))
+        btn_refresh_models = ctk.CTkButton(
+            ollama_pick_frm,
+            text="Refresh",
+            height=32,
+            width=70,
+            fg_color="#1E1C2E",
+            hover_color=_COLORS["border"],
+            border_width=1,
+            border_color=_COLORS["border"],
+            text_color=_COLORS["accent"],
+            corner_radius=8,
+            command=self._refresh_ollama_models
+        )
+        btn_refresh_models.grid(row=0, column=1, sticky="e")
+        row += 1
+
         # API Keys Fields
         ctk.CTkLabel(
             self._grid,
@@ -391,6 +432,40 @@ class PreferencesView(ctk.CTkFrame):
     def _update_coords_display(self) -> None:
         box_text = f"Current: {config.CROP_BOX if config.CROP_BOX else 'Full Screen'}"
         self.lbl_crop_coords.configure(text=box_text)
+
+    def _refresh_ollama_models(self) -> None:
+        from network.api_client import get_ollama_provider
+        base_url = self._ent_ollama_url.get().strip() or "http://localhost:11434"
+        self._set_status("Fetching installed Ollama models...", is_error=False)
+
+        def _run():
+            op = get_ollama_provider()
+            if not op.is_running(base_url):
+                self.after(0, lambda: self._set_status(
+                    "Ollama not running — install from ollama.com"
+                ))
+                self.after(0, lambda: self._opt_ollama_model.configure(
+                    values=["Ollama not running"]
+                ))
+                return
+            models = op.list_models(base_url)
+            if not models:
+                display = ["(no models installed)"]
+                msg = "No models installed. Type a model name above and click Install Model."
+            else:
+                display = models
+                msg = f"Found {len(models)} model(s). Select one to use it."
+            self.after(0, lambda d=display: self._opt_ollama_model.configure(values=d))
+            self.after(0, lambda d=display: self._opt_ollama_model.set(d[0]))
+            self.after(0, lambda m=msg: self._set_status(m, is_error=False))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+    def _on_ollama_model_selected(self, value: str) -> None:
+        skip = {"(click Refresh to load)", "(no models installed)", "Ollama not running"}
+        if value not in skip:
+            self._ent_model.delete(0, "end")
+            self._ent_model.insert(0, value)
 
     def _install_ollama_model(self) -> None:
         from network.api_client import get_ollama_provider
