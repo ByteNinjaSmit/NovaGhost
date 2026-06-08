@@ -103,7 +103,7 @@ class DiagnosticsService:
         try:
             if config.SETTINGS_FILE.exists():
                 import json
-                with open(config.SETTINGS_FILE, "r") as f:
+                with open(config.SETTINGS_FILE, "r", encoding="utf-8-sig") as f:
                     json.load(f)
             checks.append("Settings file valid")
         except Exception as e:

@@ -92,7 +92,7 @@ class ActivationWindow(ctk.CTk):
                     logger.error(f"Error in thread-safe after task: {e}")
         except queue.Empty:
             pass
-        _orig_after(self, 10, self._process_after_queue)
+        _orig_after(self, 50, self._process_after_queue)
 
     def _setup_window(self) -> None:
         self.title("NovaGhost")
@@ -438,13 +438,28 @@ class ActivationWindow(ctk.CTk):
         self._status_bar.configure(text=message)
 
     def _on_resize(self, event) -> None:
+        if hasattr(self, "_resize_job"):
+            try:
+                self.after_cancel(self._resize_job)
+            except Exception:
+                pass
+        self._resize_job = _orig_after(self, 150, self._apply_bg_resize)
+
+    def _apply_bg_resize(self) -> None:
         try:
             if hasattr(self, "_bg_label") and hasattr(self, "_bg_image_original"):
-                new_size = (self.winfo_width(), self.winfo_height())
+                w = self.winfo_width()
+                h = self.winfo_height()
+                if w < 10 or h < 10:
+                    return
+                last = getattr(self, "_bg_last_size", None)
+                if last == (w, h):
+                    return
+                self._bg_last_size = (w, h)
                 new_img = ctk.CTkImage(
                     light_image=self._bg_image_original,
                     dark_image=self._bg_image_original,
-                    size=new_size
+                    size=(w, h)
                 )
                 self._bg_label.configure(image=new_img)
         except Exception:

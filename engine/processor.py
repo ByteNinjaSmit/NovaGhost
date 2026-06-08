@@ -28,6 +28,8 @@ class PipelineManager:
         self.task_queue = queue.Queue()
         self.processing = False
         self.running = True
+        self._last_request_time: float = 0.0
+        self._request_cooldown: float = 5.0
         if config.HIDE_PROCESS:
             VisibilityController.hide_console()
             VisibilityController.hide_from_taskbar()
@@ -39,6 +41,7 @@ class PipelineManager:
                 if self.processing:
                     continue
                 self.processing = True
+                self._last_request_time = time.time()
                 add_recent_event("Pipeline trigger received")
                 screenshot = self.capture_manager.capture_screen()
                 if not screenshot:
@@ -55,6 +58,8 @@ class PipelineManager:
                         continue
                 response = self.api_handler.query(screenshot)
                 if not response:
+                    err = getattr(self.api_handler, "_last_error", "") or "check API key / model name"
+                    self.injection.display_response(f"API Error: {err}")
                     self.processing = False
                     continue
                 add_recent_event(f"Query returned: {len(response)} chars")
@@ -69,9 +74,16 @@ class PipelineManager:
                 self.processing = False
 
     def _on_gesture_detected(self) -> None:
-        if not self.processing:
-            add_recent_event("Trigger detected")
-            self.task_queue.put(True)
+        now = time.time()
+        if self.processing:
+            return
+        elapsed = now - self._last_request_time
+        if elapsed < self._request_cooldown:
+            remaining = int(self._request_cooldown - elapsed) + 1
+            self.injection.display_response(f"Wait {remaining}s")
+            return
+        add_recent_event("Trigger detected")
+        self.task_queue.put(True)
 
     def start(self) -> None:
         self.gesture_detector.set_callback(self._on_gesture_detected)

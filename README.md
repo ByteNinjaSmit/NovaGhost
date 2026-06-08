@@ -24,7 +24,7 @@ novaghost/
     └── package.json     ← Node dependencies
 ```
 
-**Backend:** Node.js Express + SQLite, deployed on a VPS at `novaghost.twistark.cloud`  
+**Backend:** Node.js Express + SQLite, deployed on a VPS at `novaghost.twistark.cloud`
 **Client:** Python desktop app compiled to `PortalClient.exe`
 
 ---
@@ -34,7 +34,7 @@ novaghost/
 ### Desktop client
 - Python 3.10+
 - Windows (primary — `pywin32`, `winotify` are Windows-only)
-- At least one vision API key (Gemini, OpenAI, or OpenRouter)
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ### Server (VPS)
 - Node.js 20+
@@ -54,10 +54,21 @@ python -m venv venv
 pip install -r requirements.txt
 
 # 3. Configure environment
-copy .env .env.local   # edit .env — fill in GEMINI_API_KEY and AUTH_SERVER_URL
+copy .env.example .env   # fill in GEMINI_API_KEY and AUTH_SERVER_URL
 
 # 4. Launch desktop client
 python main.py
+```
+
+---
+
+## Build Client Exe
+
+```powershell
+.\venv\Scripts\Activate.ps1
+pip install pyinstaller
+pyinstaller main.spec --noconfirm
+# Output: dist\PortalClient.exe
 ```
 
 ---
@@ -68,13 +79,10 @@ python main.py
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GEMINI_API_KEY` | — | Google Gemini API key (primary provider) |
-| `OPENROUTER_API_KEY` | — | OpenRouter key (fallback provider) |
+| `GEMINI_API_KEY` | — | Google Gemini API key (`AIzaSy...` format from AI Studio) |
+| `OPENROUTER_API_KEY` | — | OpenRouter key (optional fallback provider) |
 | `OPENAI_API_KEY` | — | OpenAI key (optional) |
-| `AUTH_SERVER_URL` | — | Auth backend URL (e.g. `https://novaghost.twistark.cloud`) |
-| `JWT_SECRET` | hardcoded fallback | **Must match VPS server .env** |
-| `INIT_SECRET` | hardcoded fallback | Header secret for bootstrap admin registration |
-| `PRIMARY_OWNER` | `admin` | Username protected from admin actions |
+| `AUTH_SERVER_URL` | — | Auth backend URL (`https://novaghost.twistark.cloud`) |
 | `TRIPLE_TAP_WINDOW` | `0.5` | Seconds to detect triple-tap gesture |
 | `RESPONSE_DURATION` | `2.0` | Seconds the overlay stays visible |
 | `GLOBAL_SHORTCUT` | `Ctrl+Shift+S` | Dashboard toggle hotkey |
@@ -87,21 +95,36 @@ python main.py
 
 - Active vision provider and model
 - Fallback provider and model
+- API keys (stored locally, never sent to backend)
 - Crop box (screen region)
 - Triple-tap window, response duration, global shortcut
-- API keys (stored locally, not sent to backend)
+- Answer text size (font pt), max characters on display
 
 ---
 
 ## Vision Providers
 
-| Provider | Key var | Default model |
-|----------|---------|--------------|
-| `gemini` | `GEMINI_API_KEY` | `gemini-1.5-flash` |
+| Provider | Key var | Working models (free tier) |
+|----------|---------|---------------------------|
+| `gemini` | `GEMINI_API_KEY` | `gemini-2.5-flash-lite`, `gemini-3.5-flash` |
 | `openrouter` | `OPENROUTER_API_KEY` | `google/gemini-2.5-flash` |
-| `openai` | `OPENAI_API_KEY` | (configurable) |
+| `openai` | `OPENAI_API_KEY` | configurable |
+
+> **Note:** `gemini-2.0-flash` and `gemini-1.5-flash` are either removed or require billing. Use `gemini-2.5-flash-lite` (primary) and `gemini-3.5-flash` (fallback) on the free tier.
 
 Configure in the **Settings** view. Primary + fallback are both supported.
+
+---
+
+## How It Works
+
+1. **Start engine** — click "Start Scanning Engine" on the Dashboard
+2. **Window hides** — app withdraws to system tray
+3. **Triple-tap** — click the mouse 3× within `TRIPLE_TAP_WINDOW` seconds
+4. **Capture** — selected screen region is grabbed as PNG
+5. **AI query** — image sent to configured Gemini model via REST API
+6. **Overlay** — response appears at top-left of screen for `RESPONSE_DURATION` seconds
+7. **5-second cooldown** — enforced between requests to respect rate limits
 
 ---
 
@@ -171,7 +194,7 @@ Five tables in SQLite (`novaghost.db` on VPS):
 | Generate invite keys | ✓ | ✓ | — |
 | View audit / login logs | ✓ | ✓ | — |
 
-Primary owner account (first registered or `PRIMARY_OWNER` env) is immune to ban, delete, and password reset by others.
+Primary owner account (`PRIMARY_OWNER` env var) is immune to ban, delete, and password reset by others.
 
 ---
 
@@ -182,18 +205,8 @@ Primary owner account (first registered or `PRIMARY_OWNER` env) is immune to ban
 - HWID binding — first login locks account to that device.
 - Clock rollback detection on client startup.
 - Single-instance mutex prevents multiple concurrent clients.
+- Overlay excluded from screen capture (`WDA_EXCLUDEFROMCAPTURE`).
 - **Set `JWT_SECRET` in VPS `.env`** — the default fallback is public knowledge.
-
----
-
-## Build Client Exe
-
-```powershell
-.\venv\Scripts\Activate.ps1
-pip install pyinstaller
-pyinstaller main.spec
-# Output: dist\PortalClient.exe
-```
 
 ---
 
@@ -206,6 +219,7 @@ All files written to `~/.novaghost/`:
 | `novaghost.log` | Runtime logs |
 | `crash.log` | Crash reports with stack traces |
 | `settings.json` | Persisted user preferences |
+| `test.log` | Last diagnostics run output |
 
 ---
 

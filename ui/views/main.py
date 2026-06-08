@@ -43,6 +43,7 @@ class DashboardView(ctk.CTkFrame):
         self.on_stop_engine = on_stop_engine
         self.on_select_region = on_select_region
         self.engine_running = engine_running
+        self._announcements_loaded = False
         self._build()
         self._load_announcements()
         self._update_engine_status_ui()
@@ -240,11 +241,14 @@ class DashboardView(ctk.CTkFrame):
         self._update_region_display()
 
     def _load_announcements(self) -> None:
+        if self._announcements_loaded:
+            return
         def _fetch():
             try:
                 ann = self.handler.get_announcements()
-                if ann:
-                    self.after(0, lambda: self.lbl_announcement.configure(text=f"📢 {ann}"))
+                text = f"📢 {ann}" if ann else "📢 No announcements."
+                self.after(0, lambda: self.lbl_announcement.configure(text=text))
+                self._announcements_loaded = True
             except Exception:
                 pass
         threading.Thread(target=_fetch, daemon=True).start()

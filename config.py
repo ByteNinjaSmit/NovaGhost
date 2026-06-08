@@ -16,7 +16,7 @@ class Config:
     
     # Active visual provider and model settings
     ACTIVE_PROVIDER: str = "gemini"
-    ACTIVE_MODEL: str = "gemini-1.5-flash"
+    ACTIVE_MODEL: str = "gemini-2.5-flash-lite"
     
     # Provider keys
     API_KEYS: dict = field(default_factory=lambda: {
@@ -28,7 +28,7 @@ class Config:
     # Fallback configuration
     FALLBACK_ENABLED: bool = True
     FALLBACK_PROVIDER: str = "openrouter"
-    FALLBACK_MODEL: str = "google/gemini-2.5-flash"
+    FALLBACK_MODEL: str = "gemini-3.5-flash"
     
     TRIPLE_TAP_WINDOW: float = float(os.getenv("TRIPLE_TAP_WINDOW", "0.5"))
     TAP_DETECTION_RADIUS: int = 50
@@ -66,12 +66,14 @@ class Config:
         if not self.SETTINGS_FILE.exists():
             return
         try:
-            with open(self.SETTINGS_FILE, "r", encoding="utf-8") as f:
+            with open(self.SETTINGS_FILE, "r", encoding="utf-8-sig") as f:
                 saved_data = json.load(f)
             allowed_fields = [
                 "TRIPLE_TAP_WINDOW",
                 "CROP_BOX",
                 "RESPONSE_DURATION",
+                "RESPONSE_FONT_SIZE",
+                "MAX_RESPONSE_LENGTH",
                 "DEBUG_MODE",
                 "GLOBAL_SHORTCUT",
                 "ACTIVE_PROVIDER",
@@ -95,6 +97,8 @@ class Config:
                 "TRIPLE_TAP_WINDOW": self.TRIPLE_TAP_WINDOW,
                 "CROP_BOX": self.CROP_BOX,
                 "RESPONSE_DURATION": self.RESPONSE_DURATION,
+                "RESPONSE_FONT_SIZE": self.RESPONSE_FONT_SIZE,
+                "MAX_RESPONSE_LENGTH": self.MAX_RESPONSE_LENGTH,
                 "DEBUG_MODE": self.DEBUG_MODE,
                 "GLOBAL_SHORTCUT": self.GLOBAL_SHORTCUT,
                 "ACTIVE_PROVIDER": self.ACTIVE_PROVIDER,

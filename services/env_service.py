@@ -31,7 +31,6 @@ class EnvService:
     def verify_python_libs() -> Dict[str, bool]:
         libs = {
             "customtkinter": False,
-            "cv2": False,
             "numpy": False,
             "PIL": False,
             "requests": False,

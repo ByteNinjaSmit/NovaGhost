@@ -222,6 +222,36 @@ class PreferencesView(ctk.CTkFrame):
         self._ent_dur.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
         row += 1
 
+        # Text size setting
+        ctk.CTkLabel(
+            self._grid,
+            text="Answer Text Size (pt):",
+            font=ctk.CTkFont(family="Segoe UI Variable", weight="bold", size=12),
+            text_color=_COLORS["text"]
+        ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
+        self._ent_font_size = ctk.CTkEntry(
+            self._grid, font=ctk.CTkFont(family="Consolas"),
+            fg_color=_COLORS["bg"], border_color=_COLORS["border"], height=32, corner_radius=8
+        )
+        self._ent_font_size.insert(0, str(config.RESPONSE_FONT_SIZE))
+        self._ent_font_size.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
+        row += 1
+
+        # Max characters setting
+        ctk.CTkLabel(
+            self._grid,
+            text="Max Characters on Display:",
+            font=ctk.CTkFont(family="Segoe UI Variable", weight="bold", size=12),
+            text_color=_COLORS["text"]
+        ).grid(row=row, column=0, padx=15, pady=12, sticky="w")
+        self._ent_max_chars = ctk.CTkEntry(
+            self._grid, font=ctk.CTkFont(family="Consolas"),
+            fg_color=_COLORS["bg"], border_color=_COLORS["border"], height=32, corner_radius=8
+        )
+        self._ent_max_chars.insert(0, str(config.MAX_RESPONSE_LENGTH))
+        self._ent_max_chars.grid(row=row, column=1, padx=15, pady=12, sticky="ew")
+        row += 1
+
         # Gesture window setting
         ctk.CTkLabel(
             self._grid,
@@ -360,6 +390,16 @@ class PreferencesView(ctk.CTkFrame):
             config.FALLBACK_MODEL = self._ent_fb_model.get().strip()
 
             config.RESPONSE_DURATION = float(self._ent_dur.get().strip())
+            font_size = int(self._ent_font_size.get().strip())
+            if not (8 <= font_size <= 72):
+                self._set_status("Text size must be between 8 and 72.")
+                return
+            config.RESPONSE_FONT_SIZE = font_size
+            max_chars = int(self._ent_max_chars.get().strip())
+            if not (50 <= max_chars <= 2000):
+                self._set_status("Max characters must be between 50 and 2000.")
+                return
+            config.MAX_RESPONSE_LENGTH = max_chars
             config.TRIPLE_TAP_WINDOW = float(self._ent_tap.get().strip())
             config.GLOBAL_SHORTCUT = shortcut
             

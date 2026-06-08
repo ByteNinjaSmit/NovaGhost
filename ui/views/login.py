@@ -46,19 +46,38 @@ class AuthView(ctk.CTkFrame):
         )
         card.grid(row=1, column=0, sticky="")
         card.grid_propagate(False)
-        self._tabs = ctk.CTkTabview(
-            card,
-            fg_color="transparent",
-            segmented_button_selected_color=_COLORS["accent"],
-            segmented_button_selected_hover_color="#818CF8",
-            segmented_button_unselected_color="#181B27",
-            segmented_button_unselected_hover_color=_COLORS["border"],
+        tab_bar = ctk.CTkFrame(card, fg_color="#181B27", corner_radius=8, height=36)
+        tab_bar.pack(fill="x", padx=25, pady=(20, 0))
+        tab_bar.pack_propagate(False)
+        self._btn_tab_signin = ctk.CTkButton(
+            tab_bar,
+            text="Sign In",
+            height=32,
+            corner_radius=6,
+            fg_color=_COLORS["accent"],
+            hover_color="#818CF8",
             text_color=_COLORS["text"],
-            corner_radius=10
+            font=ctk.CTkFont(family="Segoe UI Variable", size=12, weight="bold"),
+            command=lambda: self._switch_tab("signin")
         )
-        self._tabs.pack(fill="both", expand=True, padx=25, pady=20)
-        self._tab_signin = self._tabs.add("Sign In")
-        self._tab_signup = self._tabs.add("Create Account")
+        self._btn_tab_signin.pack(side="left", fill="both", expand=True, padx=(4, 2), pady=2)
+        self._btn_tab_signup = ctk.CTkButton(
+            tab_bar,
+            text="Create Account",
+            height=32,
+            corner_radius=6,
+            fg_color="transparent",
+            hover_color=_COLORS["border"],
+            text_color=_COLORS["muted"],
+            font=ctk.CTkFont(family="Segoe UI Variable", size=12, weight="bold"),
+            command=lambda: self._switch_tab("signup")
+        )
+        self._btn_tab_signup.pack(side="left", fill="both", expand=True, padx=(2, 4), pady=2)
+        content_area = ctk.CTkFrame(card, fg_color="transparent")
+        content_area.pack(fill="both", expand=True, padx=25, pady=(8, 0))
+        self._tab_signin = ctk.CTkFrame(content_area, fg_color="transparent")
+        self._tab_signin.pack(fill="both", expand=True)
+        self._tab_signup = ctk.CTkFrame(content_area, fg_color="transparent")
         self._build_signin_tab()
         self._build_signup_tab()
         self._lbl_status = ctk.CTkLabel(
@@ -68,6 +87,21 @@ class AuthView(ctk.CTkFrame):
             font=ctk.CTkFont(family="Segoe UI Variable", size=12, weight="bold")
         )
         self._lbl_status.pack(side="bottom", fill="x", pady=(0, 10))
+        self._active_tab = "signin"
+
+    def _switch_tab(self, tab: str) -> None:
+        if tab == "signin":
+            self._tab_signup.pack_forget()
+            self._tab_signin.pack(fill="both", expand=True)
+            self._btn_tab_signin.configure(fg_color=_COLORS["accent"], text_color=_COLORS["text"])
+            self._btn_tab_signup.configure(fg_color="transparent", text_color=_COLORS["muted"])
+        else:
+            self._tab_signin.pack_forget()
+            self._tab_signup.pack(fill="both", expand=True)
+            self._btn_tab_signup.configure(fg_color=_COLORS["accent"], text_color=_COLORS["text"])
+            self._btn_tab_signin.configure(fg_color="transparent", text_color=_COLORS["muted"])
+        self._active_tab = tab
+        self._set_status("", False)
 
     def _build_signin_tab(self) -> None:
         tab = self._tab_signin

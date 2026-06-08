@@ -179,30 +179,42 @@ class ApiClient:
             "openai": OpenAiVisionProvider(),
             "openrouter": OpenRouterVisionProvider()
         }
+        self._last_error: str = ""
 
     def query_image(self, image: Image.Image) -> Optional[str]:
+        errors = []
         provider_name = self.config.ACTIVE_PROVIDER.lower()
         model = self.config.ACTIVE_MODEL
         api_key = self.config.get_api_key(provider_name)
-        
-        provider = self.providers.get(provider_name)
-        if provider:
-            logger.info(f"Querying active visual provider '{provider_name}' using model '{model}'")
-            res = provider.analyze_image(image, api_key, model, self.config.API_TIMEOUT)
-            if res:
-                return self._clean_response(res)
-        
-        if self.config.FALLBACK_ENABLED:
-            fb_provider_name = self.config.FALLBACK_PROVIDER.lower()
-            fb_model = self.config.FALLBACK_MODEL
-            fb_key = self.config.get_api_key(fb_provider_name)
-            
-            logger.warning(f"Active provider failed. Triggering fallback provider '{fb_provider_name}' with model '{fb_model}'")
-            fb_provider = self.providers.get(fb_provider_name)
-            if fb_provider:
-                res = fb_provider.analyze_image(image, fb_key, fb_model, self.config.API_TIMEOUT)
+
+        if not api_key:
+            errors.append(f"No {provider_name} key")
+        else:
+            provider = self.providers.get(provider_name)
+            if provider:
+                logger.info(f"Querying '{provider_name}' model '{model}'")
+                res = provider.analyze_image(image, api_key, model, self.config.API_TIMEOUT)
                 if res:
                     return self._clean_response(res)
+                errors.append(f"{provider_name}/{model} failed")
+
+        if self.config.FALLBACK_ENABLED:
+            fb_name = self.config.FALLBACK_PROVIDER.lower()
+            fb_model = self.config.FALLBACK_MODEL
+            fb_key = self.config.get_api_key(fb_name)
+            if not fb_key:
+                errors.append(f"No {fb_name} fallback key")
+            else:
+                fb_provider = self.providers.get(fb_name)
+                if fb_provider:
+                    logger.warning(f"Fallback: '{fb_name}' model '{fb_model}'")
+                    res = fb_provider.analyze_image(image, fb_key, fb_model, self.config.API_TIMEOUT)
+                    if res:
+                        return self._clean_response(res)
+                    errors.append(f"{fb_name}/{fb_model} failed")
+
+        self._last_error = " | ".join(errors)
+        logger.error(f"All providers failed: {self._last_error}")
         return None
 
     def query(self, image: Image.Image) -> Optional[str]:

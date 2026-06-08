@@ -39,7 +39,7 @@ class OverlayController:
             root.attributes("-topmost", True)
             root.wm_attributes("-transparentcolor", "black")
             root.config(bg="black")
-            font_size = max(6, int(self.config.RESPONSE_FONT_SIZE * 0.7))
+            font_size = max(8, self.config.RESPONSE_FONT_SIZE)
             font_config = ("Consolas", font_size, "bold")
             hex_color = '#%02x%02x%02x' % tuple(self.config.RESPONSE_TEXT_COLOR)
             label = tk.Label(root, text=clean_option, font=font_config, fg=hex_color, bg="black", justify="left")
