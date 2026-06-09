@@ -51,7 +51,7 @@ class Sidebar(ctk.CTkFrame):
         ).grid(row=0, column=0, padx=20, pady=(24, 2))
         ctk.CTkLabel(
             self,
-            text="✦ Client Interface ✦",
+            text="by Twistark Technologies",
             text_color="#6B7280",
             font=ctk.CTkFont(family="Segoe UI Variable", size=10, weight="bold")
         ).grid(row=1, column=0, padx=20, pady=(0, 16))

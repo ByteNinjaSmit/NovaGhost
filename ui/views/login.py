@@ -33,7 +33,8 @@ class AuthView(ctk.CTkFrame):
     def _build(self) -> None:
         self.grid_rowconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=0)
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(2, weight=0)
+        self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
         card = ctk.CTkFrame(
             self,
@@ -88,6 +89,12 @@ class AuthView(ctk.CTkFrame):
         )
         self._lbl_status.pack(side="bottom", fill="x", pady=(0, 10))
         self._active_tab = "signin"
+        ctk.CTkLabel(
+            self,
+            text="A Product of Twistark Technologies",
+            text_color="#4B5563",
+            font=ctk.CTkFont(family="Segoe UI Variable", size=10)
+        ).grid(row=2, column=0, pady=(10, 0))
 
     def _switch_tab(self, tab: str) -> None:
         if tab == "signin":
