@@ -12,8 +12,7 @@ logger = logging.getLogger("Config")
 @dataclass
 class Config:
     CURRENT_VERSION: str = "3.0.0"
-    AUTH_SERVER_URL: str = os.getenv("AUTH_SERVER_URL", "https://novaghost.twistark.cloud")
-    
+
     # Active visual provider and model settings
     ACTIVE_PROVIDER: str = "gemini"
     ACTIVE_MODEL: str = "gemini-2.5-flash-lite"

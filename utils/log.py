@@ -10,8 +10,9 @@ class SensitiveInfoFormatter(logging.Formatter):
         formatted = super().format(record)
         try:
             from config import config
-            if config.AUTH_SERVER_URL:
-                formatted = formatted.replace(config.AUTH_SERVER_URL, "[AUTH_SERVER_URL]")
+            for _k in (config.API_KEYS.values() if isinstance(config.API_KEYS, dict) else []):
+                if _k and _k != "local":
+                    formatted = formatted.replace(_k, "[REDACTED_API_KEY]")
             if getattr(config, "USER_API_KEY", None):
                 formatted = formatted.replace(config.USER_API_KEY, "[REDACTED_API_KEY]")
             if getattr(config, "_PRIMARY_API_KEY", None):
@@ -128,12 +129,9 @@ FULL TRACEBACK:
 """
         try:
             from config import config
-            if config.AUTH_SERVER_URL:
-                report = report.replace(config.AUTH_SERVER_URL, "[AUTH_SERVER_URL]")
-            if config.USER_API_KEY:
-                report = report.replace(config.USER_API_KEY, "[REDACTED_API_KEY]")
-            if config._PRIMARY_API_KEY:
-                report = report.replace(config._PRIMARY_API_KEY, "[REDACTED_API_KEY]")
+            for _k in (config.API_KEYS.values() if isinstance(config.API_KEYS, dict) else []):
+                if _k and _k != "local":
+                    report = report.replace(_k, "[REDACTED_API_KEY]")
             if config._FALLBACK_API_KEY:
                 report = report.replace(config._FALLBACK_API_KEY, "[REDACTED_API_KEY]")
         except Exception:

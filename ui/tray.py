@@ -6,10 +6,9 @@ import pystray
 logger = logging.getLogger("TrayIcon")
 
 class StealthTray:
-    def __init__(self, on_show_dashboard, on_show_settings, on_show_license, on_restart_engine, on_exit_app):
+    def __init__(self, on_show_dashboard, on_show_settings, on_restart_engine, on_exit_app):
         self.on_show_dashboard = on_show_dashboard
         self.on_show_settings = on_show_settings
-        self.on_show_license = on_show_license
         self.on_restart_engine = on_restart_engine
         self.on_exit_app = on_exit_app
         self.icon = None
@@ -42,7 +41,6 @@ class StealthTray:
         self.current_menu = pystray.Menu(
             pystray.MenuItem("Open Dashboard", lambda: self.on_show_dashboard()),
             pystray.MenuItem("Open Settings", lambda: self.on_show_settings()),
-            pystray.MenuItem("License Information", lambda: self.on_show_license()),
             pystray.MenuItem(f"Status: {self.status_message}", lambda: None, enabled=False),
             pystray.MenuItem("Restart Engine", lambda: self.on_restart_engine()),
             pystray.Menu.SEPARATOR,

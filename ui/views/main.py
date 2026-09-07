@@ -1,7 +1,6 @@
 import logging
-import threading
 import customtkinter as ctk
-from typing import Callable, Optional, Dict, Any
+from typing import Callable
 
 from config import config
 from ui.components.card import create_status_card
@@ -26,34 +25,24 @@ class DashboardView(ctk.CTkFrame):
     def __init__(
         self,
         parent,
-        handler,
-        user_data: dict,
         on_start_engine: Callable[[], None],
         on_stop_engine: Callable[[], None],
         on_select_region: Callable[[], None],
         engine_running: bool = False,
         **kwargs
     ):
-        import time
-        start_time = time.time()
         super().__init__(parent, fg_color="transparent", **kwargs)
-        self.handler = handler
-        self.user_data = user_data
         self.on_start_engine = on_start_engine
         self.on_stop_engine = on_stop_engine
         self.on_select_region = on_select_region
         self.engine_running = engine_running
-        self._announcements_loaded = False
         self._build()
-        self._load_announcements()
         self._update_engine_status_ui()
-        duration = int((time.time() - start_time) * 1000)
-        logger.info(f"Dashboard build: {duration}ms")
 
     def _build(self) -> None:
         title_lbl = ctk.CTkLabel(
             self,
-            text="Portal Command Center",
+            text="Command Center",
             font=ctk.CTkFont(family="Segoe UI Variable", size=24, weight="bold"),
             text_color=_COLORS["text"]
         )
@@ -65,16 +54,16 @@ class DashboardView(ctk.CTkFrame):
             font=ctk.CTkFont(family="Segoe UI Variable", size=13)
         )
         desc_lbl.pack(anchor="w", pady=(0, 10))
-        self.lbl_announcement = ctk.CTkLabel(
+        self.lbl_hint = ctk.CTkLabel(
             self,
-            text="📢 Loading system announcements...",
+            text="",
             text_color=_COLORS["text"],
             fg_color=_COLORS["surface"],
             corner_radius=8,
             height=32,
             font=ctk.CTkFont(family="Segoe UI Variable", size=12, weight="bold")
         )
-        self.lbl_announcement.pack(fill="x", pady=(0, 15))
+        self.lbl_hint.pack(fill="x", pady=(0, 15))
         self.hero_card = ctk.CTkFrame(
             self,
             fg_color=_COLORS["surface"],
@@ -186,42 +175,39 @@ class DashboardView(ctk.CTkFrame):
         grid_container.pack(fill="both", expand=True, pady=(0, 10))
         grid_container.grid_rowconfigure((0, 1), weight=1)
         grid_container.grid_columnconfigure((0, 1, 2), weight=1)
-        role = self.user_data.get("role", "user").upper()
-        credits_val = self.user_data.get("credits", 0)
-        unlimited = self.user_data.get("credits_unlimited", False)
-        credits_str = "Unlimited" if unlimited else str(credits_val)
-        self.card_user = create_status_card(
+        self.card_provider = create_status_card(
             grid_container,
-            "USER IDENTITY",
-            self.user_data.get("username", "—").upper(),
-            "Profile session authenticated",
-            _COLORS["pass"]
-        )
-        self.card_user.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
-        self.card_device = create_status_card(
-            grid_container,
-            "DEVICE LOCK",
-            "BOUND" if self.user_data.get("hwid") else "UNBOUND",
-            "Hardware fingerprint security",
-            _COLORS["pass"] if self.user_data.get("hwid") else _COLORS["warn"]
-        )
-        self.card_device.grid(row=0, column=1, padx=6, pady=6, sticky="nsew")
-        self.card_clearance = create_status_card(
-            grid_container,
-            "CLEARANCE LEVEL",
-            role,
-            "System access privilege role",
+            "VISION PROVIDER",
+            config.ACTIVE_PROVIDER.upper(),
+            "Active AI analysis backend",
             _COLORS["accent"]
         )
-        self.card_clearance.grid(row=0, column=2, padx=6, pady=6, sticky="nsew")
-        self.card_credits = create_status_card(
+        self.card_provider.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
+        self.card_model = create_status_card(
             grid_container,
-            "BALANCE CREDITS",
-            credits_str,
-            "Remaining AI scanning limits",
+            "ACTIVE MODEL",
+            config.ACTIVE_MODEL,
+            "Model used for scanning",
             _COLORS["accent"]
         )
-        self.card_credits.grid(row=1, column=0, padx=6, pady=6, sticky="nsew")
+        self.card_model.grid(row=0, column=1, padx=6, pady=6, sticky="nsew")
+        has_key = config.has_primary_key()
+        self.card_key = create_status_card(
+            grid_container,
+            "API KEY",
+            "CONFIGURED" if has_key else "MISSING",
+            "Set your API key in Preferences",
+            _COLORS["pass"] if has_key else _COLORS["warn"]
+        )
+        self.card_key.grid(row=0, column=2, padx=6, pady=6, sticky="nsew")
+        self.card_fallback = create_status_card(
+            grid_container,
+            "FALLBACK",
+            (config.FALLBACK_PROVIDER.upper() if config.FALLBACK_ENABLED else "DISABLED"),
+            "Backup provider on failure",
+            _COLORS["accent"] if config.FALLBACK_ENABLED else _COLORS["muted"]
+        )
+        self.card_fallback.grid(row=1, column=0, padx=6, pady=6, sticky="nsew")
         self.card_version = create_status_card(
             grid_container,
             "CURRENT VERSION",
@@ -239,19 +225,17 @@ class DashboardView(ctk.CTkFrame):
         )
         self.card_status.grid(row=1, column=2, padx=6, pady=6, sticky="nsew")
         self._update_region_display()
+        self._update_hint()
 
-    def _load_announcements(self) -> None:
-        if self._announcements_loaded:
-            return
-        def _fetch():
-            try:
-                ann = self.handler.get_announcements()
-                text = f"📢 {ann}" if ann else "📢 No announcements."
-                self.after(0, lambda: self.lbl_announcement.configure(text=text))
-                self._announcements_loaded = True
-            except Exception:
-                pass
-        threading.Thread(target=_fetch, daemon=True).start()
+    def _update_hint(self) -> None:
+        if config.has_primary_key():
+            self.lbl_hint.configure(
+                text=f"✅ Ready. Provider: {config.ACTIVE_PROVIDER} | Model: {config.ACTIVE_MODEL}"
+            )
+        else:
+            self.lbl_hint.configure(
+                text="⚠ No API key set — open Preferences and enter your API key to use the scanner."
+            )
 
     def _on_toggle_clicked(self) -> None:
         if safe.is_active():
@@ -295,25 +279,24 @@ class DashboardView(ctk.CTkFrame):
             self.lbl_stealth_region.configure(text="Region: Full Screen")
 
     def on_show(self) -> None:
-        if hasattr(self, "card_user"):
-            self.card_user.lbl_val.configure(text=self.user_data.get("username", "—").upper())
-        if hasattr(self, "card_device"):
-            has_hwid = bool(self.user_data.get("hwid"))
-            self.card_device.lbl_val.configure(text="BOUND" if has_hwid else "UNBOUND")
-            self.card_device.lbl_val.configure(text_color=_COLORS["pass"] if has_hwid else _COLORS["warn"])
-        if hasattr(self, "card_clearance"):
-            role = self.user_data.get("role", "user").upper()
-            self.card_clearance.lbl_val.configure(text=role)
-        if hasattr(self, "card_credits"):
-            credits_val = self.user_data.get("credits", 0)
-            unlimited = self.user_data.get("credits_unlimited", False)
-            credits_str = "Unlimited" if unlimited else str(credits_val)
-            self.card_credits.lbl_val.configure(text=credits_str)
+        if hasattr(self, "card_provider"):
+            self.card_provider.lbl_val.configure(text=config.ACTIVE_PROVIDER.upper())
+        if hasattr(self, "card_model"):
+            self.card_model.lbl_val.configure(text=config.ACTIVE_MODEL)
+        if hasattr(self, "card_key"):
+            has_key = config.has_primary_key()
+            self.card_key.lbl_val.configure(text="CONFIGURED" if has_key else "MISSING")
+            self.card_key.lbl_val.configure(text_color=_COLORS["pass"] if has_key else _COLORS["warn"])
+        if hasattr(self, "card_fallback"):
+            self.card_fallback.lbl_val.configure(
+                text=config.FALLBACK_PROVIDER.upper() if config.FALLBACK_ENABLED else "DISABLED"
+            )
         if hasattr(self, "card_status"):
             self.card_status.lbl_val.configure(text="SAFE MODE" if safe.is_active() else "NOMINAL")
             self.card_status.lbl_val.configure(text_color=_COLORS["warn"] if safe.is_active() else _COLORS["pass"])
+        self.lbl_stealth_hotkey.configure(text=f"Hotkey: {config.GLOBAL_SHORTCUT}")
         if self.master and hasattr(self.master, "master") and hasattr(self.master.master, "engine_running"):
             self.engine_running = self.master.master.engine_running
         self._update_engine_status_ui()
         self._update_region_display()
-        self._load_announcements()
+        self._update_hint()

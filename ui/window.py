@@ -7,15 +7,11 @@ import queue
 import tkinter as tk
 
 from config import config
-from network.auth_client import KeyAuthHandler
 from ui.components.side import Sidebar
 from ui.views.diag import DiagnosticsView
-from ui.views.login import AuthView
 from ui.views.main import DashboardView
-from ui.views.profile import AccountView
 from ui.views.settings import PreferencesView
 from ui.views.info import ReleaseNotesView
-from ui.views.admin.portal import AdminView
 import core.safe as safe_mode
 
 logger = logging.getLogger("AppWindow")
@@ -55,27 +51,21 @@ tk.Misc.after = _thread_safe_after
 class ActivationWindow(ctk.CTk):
     def __init__(
         self,
-        handler: KeyAuthHandler,
-        on_authorized: Callable,
+        on_ready: Optional[Callable] = None,
         on_start_engine: Optional[Callable] = None,
         on_stop_engine: Optional[Callable] = None,
         on_shortcut_changed: Optional[Callable] = None,
-        on_logout: Optional[Callable] = None,
     ):
         super().__init__()
-        self.handler = handler
-        self.on_authorized = on_authorized
+        self.on_ready = on_ready
         self.on_start_engine = on_start_engine
         self.on_stop_engine = on_stop_engine
         self.on_shortcut_changed = on_shortcut_changed
-        self.on_logout = on_logout
-        self.user_data: dict = {}
-        self.is_admin: bool = False
-        self.logged_in: bool = False
-        self.is_authenticated: bool = False
+        # Local-only build: always "authenticated". Kept for backward compatibility
+        # with views that still check this flag.
+        self.is_authenticated: bool = True
         self.engine_running: bool = False
         self._views: dict = {}
-        self._credit_service = None
         self._current_tab: str = ""
         self._setup_window()
         self._setup_layout()
@@ -127,11 +117,9 @@ class ActivationWindow(ctk.CTk):
         self._sidebar = Sidebar(
             self,
             on_nav=self._navigate_to,
-            on_logout=self._logout,
             on_diagnostics=lambda: self._navigate_to("diag"),
         )
         self._sidebar.grid(row=0, column=0, sticky="nsew")
-        self._sidebar.grid_remove()
         self._content = ctk.CTkFrame(self, fg_color="transparent")
         self._content.grid(row=0, column=1, sticky="nsew", padx=16, pady=16)
         self._content.grid_rowconfigure(0, weight=1)
@@ -149,152 +137,34 @@ class ActivationWindow(ctk.CTk):
     def _start(self) -> None:
         if safe_mode.is_active():
             logger.warning("Safe Mode active — opening Diagnostics Center.")
-            self._show_safe_mode_ui()
-        else:
-            self._check_cached_credentials()
-
-    def _show_safe_mode_ui(self) -> None:
-        self._sidebar.grid(row=0, column=0, sticky="nsew")
-        self._sidebar.show_logged_out()
-        self._sidebar.show_safe_mode_indicator()
-        self._show_auth_view()
-        self._navigate_to("diag")
-
-    def _check_cached_credentials(self) -> None:
-        def _check():
-            try:
-                cached = self.handler.load_cached_credentials()
-                if cached:
-                    auth_type = cached.get("type", "userpass")
-                    if auth_type == "userpass":
-                        username = cached.get("key_or_user", "")
-                        password = cached.get("password", "")
-                        if username and password:
-                            user_data = self.handler.login_username_password(
-                                username, password, remember=False
-                            )
-                            result = {
-                                "success": True,
-                                "token": self.handler.session_token,
-                                "user_data": user_data
-                            }
-                            self.after(0, lambda: self._on_login_success(result))
-                            return
-            except Exception as e:
-                logger.debug(f"Cached credential check failed: {e}")
-            self.after(0, self._show_auth_view)
-        threading.Thread(target=_check, daemon=True).start()
-
-    def _show_auth_view(self) -> None:
-        if self._current_tab:
-            curr_view = self._views.get(self._current_tab)
-            if curr_view:
-                curr_view.grid_remove()
-            self._current_tab = ""
-        if "auth" not in self._views:
-            view = AuthView(
-                self._content,
-                handler=self.handler,
-                on_login_success=self._on_login_success,
-            )
-            self._views["auth"] = view
-        else:
-            view = self._views["auth"]
-        view.grid(row=0, column=0, sticky="nsew")
-
-    def _on_login_success(self, result: dict) -> None:
-        self.user_data = result.get("user_data", {})
-        self.logged_in = True
-        self.is_authenticated = True
-        role = self.user_data.get("role", "user")
-        self.is_admin = role in ["admin", "moderator"]
-        token = result.get("token", "") or self.handler.session_token
-        if token:
-            from services.quota_service import QuotaService
-            self._credit_service = QuotaService(config.AUTH_SERVER_URL, token)
-            threading.Thread(
-                target=self._refresh_credits_background,
-                daemon=True
-            ).start()
-        self._sidebar.grid(row=0, column=0, sticky="nsew")
-        self._sidebar.show_logged_in(self.user_data, is_admin=self.is_admin)
-        if self.on_authorized:
-            try:
-                self.on_authorized()
-            except Exception as e:
-                logger.error(f"on_authorized callback error: {e}")
+            self._sidebar.show_safe_mode_indicator()
+            self._navigate_to("diag")
+            return
+        self._sidebar.show_nav()
+        if self.on_ready:
+            # Defer to the next loop tick so module-level globals in the
+            # callback (e.g. the app_window reference) are bound first.
+            self.after(0, self._fire_on_ready)
         self._navigate_to("dash")
         self._sidebar.refresh_health_async()
-        logger.info(f"Login success: {self.user_data.get('username')} ({role})")
         if not config.has_primary_key():
-            self._set_status("No API key set — go to Preferences and enter your Gemini API key to use the scanner.")
+            self._set_status(
+                "No API key set — open Preferences and enter your API key to use the scanner."
+            )
 
-    def _refresh_credits_background(self) -> None:
+    def _fire_on_ready(self) -> None:
         try:
-            status = self._credit_service.refresh()
-            self.user_data["credits"] = status.credits
-            self.user_data["credits_unlimited"] = status.credits_unlimited
-            self.user_data["lifetime_requests"] = status.lifetime_requests
-            self.after(0, lambda: self._sidebar.update_credits_display(status.display_credits))
-        except Exception:
-            pass
-
-    def _logout(self) -> None:
-        self.logged_in = False
-        self.is_authenticated = False
-        self.user_data = {}
-        self.is_admin = False
-        self._credit_service = None
-        if self.on_logout:
-            try:
-                self.on_logout()
-            except Exception as e:
-                logger.error(f"on_logout callback error: {e}")
-        if self.handler:
-            self.handler.session_token = ""
-            self.handler.user_info = {}
-        for view in self._views.values():
-            try:
-                view.destroy()
-            except Exception:
-                pass
-        self._views.clear()
-        self._current_tab = ""
-        if self.engine_running and self.on_stop_engine:
-            try:
-                self.on_stop_engine()
-            except Exception:
-                pass
-        self.engine_running = False
-        try:
-            self.handler.delete_cached_credentials()
-        except Exception:
-            pass
-        self._sidebar.show_logged_out()
-        self._sidebar.grid_remove()
-        self._show_auth_view()
-        logger.info("User logged out.")
+            self.on_ready()
+        except Exception as e:
+            logger.error(f"on_ready callback error: {e}")
 
     def _navigate_to(self, tab: str) -> None:
-        if not self.is_authenticated:
-            if safe_mode.is_active() and tab in ("diag", "auth"):
-                pass
-            elif tab == "auth":
-                pass
-            else:
-                logger.warning(f"Unauthenticated navigation blocked to tab: {tab}")
-                return
-        if tab == "admin" and not self.is_admin:
-            logger.warning("Access denied: non-admin navigation blocked to admin tab")
-            return
         if self._current_tab == tab:
             return
         if self._current_tab:
             curr_view = self._views.get(self._current_tab)
             if curr_view:
                 curr_view.grid_remove()
-        if tab != "auth" and "auth" in self._views:
-            self._views["auth"].grid_remove()
         self._current_tab = tab
         self._sidebar.set_active_tab(tab)
         self._set_status("")
@@ -308,26 +178,13 @@ class ActivationWindow(ctk.CTk):
                     logger.error(f"Error calling on_show for {tab}: {e}")
 
     def _get_or_create_view(self, tab: str) -> Optional[ctk.CTkFrame]:
-        if not self.is_authenticated:
-            if safe_mode.is_active() and tab == "diag":
-                pass
-            elif tab == "auth":
-                pass
-            else:
-                logger.warning(f"Unauthenticated attempt to create/access view: {tab}")
-                return None
-        if tab == "admin" and not self.is_admin:
-            logger.warning(f"Non-admin attempt to create/access view: {tab}")
-            return None
         if tab in self._views:
             return self._views[tab]
         view_factories = {
             "dash":  self._make_dashboard_view,
-            "sub":   self._make_account_view,
             "pref":  self._make_preferences_view,
             "notes": self._make_release_notes_view,
             "diag":  self._make_diagnostics_view,
-            "admin": self._make_admin_view,
         }
         factory = view_factories.get(tab)
         if factory:
@@ -336,27 +193,13 @@ class ActivationWindow(ctk.CTk):
             return view
         return None
 
-    def _clear_content(self) -> None:
-        pass
-
     def _make_dashboard_view(self) -> ctk.CTkFrame:
         return DashboardView(
             self._content,
-            handler=self.handler,
-            user_data=self.user_data,
             on_start_engine=self._start_engine,
             on_stop_engine=self._stop_engine,
             on_select_region=self._select_screen_region,
             engine_running=self.engine_running,
-        )
-
-    def _make_account_view(self) -> ctk.CTkFrame:
-        return AccountView(
-            self._content,
-            handler=self.handler,
-            user_data=self.user_data,
-            on_start_engine=self._start_engine,
-            on_select_region=self._select_screen_region,
         )
 
     def _make_preferences_view(self) -> ctk.CTkFrame:
@@ -367,38 +210,12 @@ class ActivationWindow(ctk.CTk):
         )
 
     def _make_release_notes_view(self) -> ctk.CTkFrame:
-        return ReleaseNotesView(self._content, handler=self.handler)
+        return ReleaseNotesView(self._content)
 
     def _make_diagnostics_view(self) -> ctk.CTkFrame:
-        token = getattr(self.handler, "session_token", "")
-        return DiagnosticsView(
-            self._content,
-            auth_handler=self.handler,
-            session_token=token,
-        )
-
-    def _make_admin_view(self) -> ctk.CTkFrame:
-        if not self.is_admin:
-            placeholder = ctk.CTkFrame(self._content, fg_color="transparent")
-            ctk.CTkLabel(
-                placeholder,
-                text="Access Denied",
-                text_color="#EF4444",
-                font=ctk.CTkFont(size=18, weight="bold")
-            ).pack(pady=40)
-            return placeholder
-        return AdminView(
-            self._content,
-            handler=self.handler,
-            credit_service=self._credit_service,
-            user_data=self.user_data,
-            on_status=self._set_status,
-        )
+        return DiagnosticsView(self._content)
 
     def _start_engine(self) -> None:
-        if not self.is_authenticated:
-            logger.warning("Unauthenticated attempt to start engine blocked.")
-            return
         if self.engine_running:
             return
         if safe_mode.is_active():
@@ -413,9 +230,6 @@ class ActivationWindow(ctk.CTk):
                 self.engine_running = False
 
     def _stop_engine(self) -> None:
-        if not self.is_authenticated:
-            logger.warning("Unauthenticated attempt to stop engine blocked.")
-            return
         if not self.engine_running:
             return
         self.engine_running = False
@@ -426,9 +240,6 @@ class ActivationWindow(ctk.CTk):
                 logger.error(f"Engine stop error: {e}")
 
     def _select_screen_region(self) -> None:
-        if not self.is_authenticated:
-            logger.warning("Unauthenticated attempt to select region blocked.")
-            return
         from engine.capture import ScreenCaptureManager
         try:
             cap = ScreenCaptureManager(config, parent=self)

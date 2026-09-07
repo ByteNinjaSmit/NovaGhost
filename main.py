@@ -12,6 +12,23 @@ if sys.platform == "win32" and os.getenv("HIDE_CONSOLE", "true").lower() == "tru
     except Exception:
         pass
 
+# Make the process DPI aware BEFORE any Tk/ctk window is created. Without this,
+# on high-resolution / scaled displays (e.g. 3200x2000 at 150-200% scaling)
+# Windows virtualizes coordinates: Tk reports logical pixels while screen
+# capture returns physical pixels, so the selected region and the captured
+# region no longer line up and the full panel resolution is unreachable.
+if sys.platform == "win32":
+    try:
+        import ctypes
+        # PROCESS_PER_MONITOR_DPI_AWARE = 2 (Windows 8.1+). Falls back to the
+        # legacy system-DPI-aware call on older builds.
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            ctypes.windll.user32.SetProcessDPIAware()
+    except Exception:
+        pass
+
 from core.guard import acquire, release, show_already_running_dialog, focus_existing_instance
 
 if not acquire():
@@ -76,20 +93,6 @@ try:
 except Exception as e:
     seq.warn(f"Stealth config skipped: {e}")
 
-seq.begin("Authentication Handler")
-try:
-    from network.auth_client import KeyAuthHandler
-    handler = KeyAuthHandler(
-        name="NovaGhost",
-        owner_id="portal",
-        version=config.CURRENT_VERSION,
-        data_dir=config.LOG_DIR
-    )
-    seq.ok("Auth handler initialized")
-except Exception as e:
-    seq.fail("Auth handler initialization failed", e)
-    handler = None
-
 seq.summary()
 add_recent_event("Startup sequence complete")
 
@@ -106,17 +109,12 @@ _engine_instance = None
 _tray_icon = None
 _hotkey_manager = None
 
-def on_authorized():
-    logger.info("Authorization callback: session established.")
-    add_recent_event("User authorized")
+def on_ready():
+    logger.info("Application ready: local session established.")
+    add_recent_event("Application ready")
     _start_hotkey()
     _start_tray()
     app_window.after(5000, verify_hotkey_alive)
-
-def on_logout():
-    logger.info("Logout callback: stopping global hotkeys and tray icon.")
-    _stop_hotkey()
-    _stop_tray()
 
 def toggle_dashboard():
     def _toggle():
@@ -237,7 +235,6 @@ def _start_tray():
         _tray_icon = StealthTray(
             on_show_dashboard=lambda: app_window.after(0, lambda: [app_window.deiconify(), app_window.focus_force()]),
             on_show_settings=lambda: app_window.after(0, lambda: app_window._navigate_to("pref")),
-            on_show_license=lambda: app_window.after(0, lambda: app_window._navigate_to("sub")),
             on_restart_engine=lambda: app_window.after(0, on_start_engine),
             on_exit_app=lambda: app_window.after(0, app_window._on_close)
         )
@@ -255,18 +252,12 @@ def _stop_tray():
             logger.warning(f"Error stopping tray icon: {e}")
         _tray_icon = None
 
-if handler is None and not safe_mode.is_active():
-    logger.critical("Auth handler unavailable and Safe Mode not triggered. Cannot launch.")
-    sys.exit(1)
-
 try:
     app_window = ActivationWindow(
-        handler=handler,
-        on_authorized=on_authorized,
+        on_ready=on_ready,
         on_start_engine=on_start_engine,
         on_stop_engine=on_stop_engine,
         on_shortcut_changed=on_shortcut_changed,
-        on_logout=on_logout,
     )
     add_recent_event("UI window created")
     logger.info("UI launched. Entering main loop.")

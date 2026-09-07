@@ -48,14 +48,6 @@ class PipelineManager:
                     self.processing = False
                     continue
                 add_recent_event("Screen region captured")
-                if self.parent and hasattr(self.parent, "_credit_service") and self.parent._credit_service:
-                    ok, msg = self.parent._credit_service.check_and_consume()
-                    if not ok:
-                        self.injection.display_response("No resources available.")
-                        self.processing = False
-                        if hasattr(self.parent, "_refresh_credits_background"):
-                            self.parent._refresh_credits_background()
-                        continue
                 response = self.api_handler.query(screenshot)
                 if not response:
                     err = getattr(self.api_handler, "_last_error", "") or "check API key / model name"
@@ -65,8 +57,6 @@ class PipelineManager:
                 add_recent_event(f"Query returned: {len(response)} chars")
                 self.injection.display_response(response)
                 self.processing = False
-                if self.parent and hasattr(self.parent, "_refresh_credits_background"):
-                    self.parent._refresh_credits_background()
             except queue.Empty:
                 continue
             except Exception as e:

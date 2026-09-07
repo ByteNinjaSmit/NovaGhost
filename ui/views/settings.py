@@ -428,9 +428,6 @@ class PreferencesView(ctk.CTkFrame):
         btn_save.pack(pady=20, padx=30, fill="x")
 
     def _on_redefine_clicked(self) -> None:
-        toplevel = self.winfo_toplevel()
-        if not getattr(toplevel, "is_authenticated", False):
-            return
         if self.on_select_region:
             self.on_select_region()
             self.after(500, self._update_coords_display)
@@ -496,10 +493,6 @@ class PreferencesView(ctk.CTkFrame):
         self._lbl_status.configure(text=text, text_color=color)
 
     def _save_preferences(self) -> None:
-        toplevel = self.winfo_toplevel()
-        if not getattr(toplevel, "is_authenticated", False):
-            logger.warning("Unauthenticated save attempt blocked.")
-            return
         try:
             shortcut = self._ent_shortcut.get().strip()
             if not shortcut:

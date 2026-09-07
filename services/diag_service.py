@@ -15,10 +15,8 @@ from utils.log import log_exception
 def scrub_sensitive_info(text: str) -> str:
     if not text:
         return text
-    if config.AUTH_SERVER_URL:
-        text = text.replace(config.AUTH_SERVER_URL, "[AUTH_SERVER_URL]")
     for provider, key in config.API_KEYS.items():
-        if key:
+        if key and key != "local":
             text = text.replace(key, f"[REDACTED_{provider.upper()}_KEY]")
     return text
 
@@ -77,7 +75,7 @@ class DiagnosticsService:
         )
         self._report_progress("Diagnostic", "running", "Starting full system test...")
         self._phase_startup(report)
-        self._phase_authentication(report)
+        self._phase_api_config(report)
         self._phase_dependencies(report)
         self._phase_capture(report)
         if not safe_mode:
@@ -121,40 +119,25 @@ class DiagnosticsService:
         report.add(PhaseResult(phase, "pass", message='; '.join(checks)))
         self._report_progress(phase, "pass", "All startup checks passed")
 
-    def _phase_authentication(self, report: DiagnosticReport) -> None:
-        phase = "Authentication"
+    def _phase_api_config(self, report: DiagnosticReport) -> None:
+        phase = "API Configuration"
         self._report_progress(phase, "running")
-        if not self.auth_handler:
-            report.add(PhaseResult(phase, "skip", message="No auth client active."))
-            return
-        try:
-            import requests
-            res = requests.get(f"{config.AUTH_SERVER_URL}/api/ping", timeout=6)
-            if res.status_code == 200:
-                data = res.json()
-                db_ok = data.get("database") == "connected"
-                if not db_ok:
-                    report.add(PhaseResult(phase, "warn", message="Authentication service online but database degraded.", module="AuthClient", function="ping"))
-                    return
-            else:
-                report.add(PhaseResult(phase, "fail", message=f"Auth server returned HTTP {res.status_code}", module="AuthClient", function="ping"))
-                return
-        except Exception as e:
-            report.add(PhaseResult(phase, "fail", message="Auth server unreachable", error=str(e), module="AuthClient", function="initialize", traceback_str=traceback.format_exc()))
-            return
-        if self.session_token:
-            try:
-                user_info = self.auth_handler.user_info
-                if user_info.get("username"):
-                    report.add(PhaseResult(phase, "pass", message=f"Authenticated as '{user_info['username']}' ({user_info.get('role', 'user')})"))
-                    self._report_progress(phase, "pass", "Session valid")
-                else:
-                    report.add(PhaseResult(phase, "warn", message="Session valid but user info incomplete."))
-            except Exception as e:
-                report.add(PhaseResult(phase, "warn", message=f"Session verification failed: {e}"))
+        provider = config.ACTIVE_PROVIDER
+        if config.has_primary_key():
+            msg = f"Active provider '{provider}' | Model: {config.ACTIVE_MODEL}"
+            if config.FALLBACK_ENABLED:
+                fb_ok = "key set" if config.has_fallback_key() else "no key"
+                msg += f" | Fallback: {config.FALLBACK_PROVIDER} ({fb_ok})"
+            report.add(PhaseResult(phase, "pass", message=msg))
+            self._report_progress(phase, "pass", "API key configured")
         else:
-            report.add(PhaseResult(phase, "pass", message="Service reachable."))
-            self._report_progress(phase, "pass", "Service reachable")
+            report.add(PhaseResult(
+                phase, "warn",
+                message=f"No API key set for active provider '{provider}'. "
+                        "Open Preferences and enter your API key.",
+                module="Config", function="has_primary_key"
+            ))
+            self._report_progress(phase, "warn", "No API key set")
 
     def _phase_dependencies(self, report: DiagnosticReport) -> None:
         phase = "Dependencies"

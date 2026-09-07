@@ -1,6 +1,8 @@
-# NovaGhost — Visual Analyzer
+# NovaGhost — Visual Analyzer (Local Edition)
 
-Desktop screen-analysis tool with an authentication backend. Triple-tap a region, get an AI response as an on-screen overlay. Ships with a credit/role system, HWID device binding, and an admin portal.
+Desktop screen-analysis tool. Triple-tap a screen region, get an AI response as an on-screen overlay.
+
+**This is the local-only build.** No login, no signup, no accounts, no admin portal, and no cloud server. Nothing to deploy — you run it on your own computer and enter your API key in the **Preferences** tab. Your key is stored locally in `~/.novaghost/settings.json` and is only sent to the AI provider you choose.
 
 ---
 
@@ -8,42 +10,31 @@ Desktop screen-analysis tool with an authentication backend. Triple-tap a region
 
 ```
 novaghost/
-├── main.py              ← Desktop client entry point (Python / CustomTkinter)
+├── main.py              ← App entry point (Python / CustomTkinter)
 ├── main.spec            ← PyInstaller build spec → dist/PortalClient.exe
 ├── config.py            ← Central config dataclass (env + disk settings)
 ├── core/                ← Boot sequence, single-instance guard, safe mode
-├── ui/                  ← Login, dashboard, settings, admin portal views
+├── ui/                  ← Dashboard, preferences, diagnostics, release notes
 ├── engine/              ← Triple-tap detector, screen capture, overlay, hider
-├── network/             ← Auth client, vision API client, update checker
-├── services/            ← Credit, status, diagnostics, env management
+├── network/             ← Vision API client (Gemini / OpenAI / OpenRouter / Ollama)
+├── services/            ← Status, diagnostics, environment checks
 ├── helpers/             ← Crypto, validation, formatting, caching
-├── utils/               ← Logging, hotkeys, alerts
-└── server/
-    ├── server.vps.js    ← Node.js Express auth server (VPS deployment)
-    ├── schema.sql       ← SQLite schema — applied automatically on first start
-    └── package.json     ← Node dependencies
+└── utils/               ← Logging, hotkeys, alerts
 ```
 
-**Backend:** Node.js Express + SQLite, deployed on a VPS at `novaghost.twistark.cloud`
-**Client:** Python desktop app compiled to `PortalClient.exe`
+Pure Python desktop app. Optionally compiled to `PortalClient.exe`.
 
 ---
 
 ## Requirements
 
-### Desktop client
 - Python 3.10+
 - Windows (primary — `pywin32`, `winotify` are Windows-only)
-- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey) **or** [Ollama](https://ollama.com) installed locally (no key needed)
-
-### Server (VPS)
-- Node.js 20+
-- PM2 (`npm install -g pm2`)
-- Nginx + Certbot for HTTPS
+- An API key for one cloud provider (Gemini / OpenAI / OpenRouter) **or** [Ollama](https://ollama.com) installed locally (no key needed, runs offline)
 
 ---
 
-## Quick Start (development)
+## Quick Start
 
 ```bash
 # 1. Create and activate virtualenv
@@ -53,16 +44,22 @@ python -m venv venv
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure environment
-copy .env.example .env   # fill in GEMINI_API_KEY and AUTH_SERVER_URL
-
-# 4. Launch desktop client
+# 3. Launch
 python main.py
 ```
 
+The app opens straight to the Dashboard — no sign-in. Then:
+
+1. Go to **Preferences**.
+2. Pick your **Active Vision Provider** and enter its **API Key** (Gemini key from [Google AI Studio](https://aistudio.google.com/app/apikey)).
+3. Click **Save System Configuration**.
+4. Back on the **Dashboard**, click **Start Scanning Engine**.
+
+A `.env` file is optional — everything can be set inside the app. If present, `GEMINI_API_KEY` / `OPENAI_API_KEY` / `OPENROUTER_API_KEY` pre-fill the fields.
+
 ---
 
-## Build Client Exe
+## Build Exe
 
 ```powershell
 .\venv\Scripts\Activate.ps1
@@ -75,14 +72,13 @@ pyinstaller main.spec --noconfirm
 
 ## Configuration
 
-### `.env` variables
+### `.env` variables (all optional)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GEMINI_API_KEY` | — | Google Gemini API key (`AIzaSy...` format from AI Studio) |
+| `GEMINI_API_KEY` | — | Google Gemini API key (`AIzaSy...` from AI Studio) |
 | `OPENROUTER_API_KEY` | — | OpenRouter key (optional fallback provider) |
 | `OPENAI_API_KEY` | — | OpenAI key (optional) |
-| `AUTH_SERVER_URL` | — | Auth backend URL (`https://novaghost.twistark.cloud`) |
 | `TRIPLE_TAP_WINDOW` | `0.5` | Seconds to detect triple-tap gesture |
 | `RESPONSE_DURATION` | `2.0` | Seconds the overlay stays visible |
 | `GLOBAL_SHORTCUT` | `Ctrl+Shift+S` | Dashboard toggle hotkey |
@@ -95,7 +91,7 @@ pyinstaller main.spec --noconfirm
 
 - Active vision provider and model
 - Fallback provider and model
-- API keys (stored locally, never sent to backend)
+- API keys (stored locally on this machine)
 - Ollama base URL (default `http://localhost:11434`)
 - Crop box (screen region)
 - Triple-tap window, response duration, global shortcut
@@ -114,7 +110,7 @@ pyinstaller main.spec --noconfirm
 
 > **Gemini note:** `gemini-2.0-flash` and `gemini-1.5-flash` are removed or require billing on v1beta. Use `gemini-2.5-flash-lite` (primary) + `gemini-3.5-flash` (fallback) on the free tier.
 
-Configure in the **Settings** view. Primary + fallback both supported.
+Configure in **Preferences**. Primary + fallback both supported.
 
 ### Ollama (local, offline)
 
@@ -122,7 +118,7 @@ No API key needed. Runs entirely on your machine.
 
 **Setup:**
 1. Install Ollama from [ollama.com](https://ollama.com)
-2. In Settings → set Active Provider to `ollama`
+2. In Preferences → set Active Provider to `ollama`
 3. Click **Load** on the Ollama Model row — dropdown populates with installed models
 4. To install a new model: type its name in the Install field (e.g. `moondream`) → click **Install**
 
@@ -149,87 +145,16 @@ No API key needed. Runs entirely on your machine.
 6. **Overlay** — response appears at top-left of screen for `RESPONSE_DURATION` seconds
 7. **5-second cooldown** — enforced between requests to respect rate limits
 
----
-
-## Database Schema
-
-Five tables in SQLite (`novaghost.db` on VPS):
-
-| Table | Purpose |
-|-------|---------|
-| `users` | Credentials, role, HWID binding, credits |
-| `login_history` | Per-login IP, HWID, status (SUCCESS / FAILED / BANNED / DEVICE_MISMATCH) |
-| `audit_log` | All admin actions with actor, target, and details |
-| `invite_keys` | Single-use `PORTAL-XXXXXXXX` registration keys |
-| `system_config` | `latest_version`, `changelog`, `download_url`, `announcements` |
+Use the tray icon (or the global shortcut) to show/hide the dashboard and restart the engine.
 
 ---
 
-## API Reference
+## Security / Privacy Notes
 
-### Public
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/ping` | Health check |
-| GET | `/api/announcements` | System announcements |
-| GET | `/api/changelog` | Release notes text |
-| GET | `/api/update?version=X` | Update check |
-| POST | `/api/login` | Authenticate — returns JWT |
-| POST | `/api/register` | Register with invite key |
-
-### User (Bearer token required)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/api/user/credits` | Credit balance |
-| POST | `/api/user/consume-credit` | Deduct one credit |
-
-### Admin (admin or moderator role)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET/POST | `/api/admin/invites` | List / generate invite keys |
-| DELETE | `/api/admin/invites/<key>` | Revoke invite key |
-| GET/POST | `/api/admin/users` | List / create users |
-| DELETE | `/api/admin/users/<username>` | Delete user |
-| POST | `/api/admin/reset-password` | Reset password |
-| POST | `/api/admin/reset-hwid` | Clear device binding |
-| POST | `/api/admin/ban` | Ban / unban user |
-| GET/POST | `/api/admin/users/<username>/credits` | View / manage credits |
-| POST | `/api/admin/version` | Update system config (admin only) |
-| GET | `/api/admin/audit-logs` | Last 150 audit entries |
-| GET | `/api/admin/login-history` | Last 150 login entries |
-
----
-
-## Role Permissions
-
-| Action | admin | moderator | user |
-|--------|-------|-----------|------|
-| Create user | ✓ | user role only | — |
-| Delete user | ✓ | — | — |
-| Ban / unban | ✓ | non-admin only | — |
-| Reset password | ✓ | non-admin only | — |
-| Reset HWID | ✓ | ✓ | — |
-| Manage credits | ✓ | — | — |
-| Update system config | ✓ | — | — |
-| Generate invite keys | ✓ | ✓ | — |
-| View audit / login logs | ✓ | ✓ | — |
-
-Primary owner account (`PRIMARY_OWNER` env var) is immune to ban, delete, and password reset by others.
-
----
-
-## Security Notes
-
-- Passwords hashed with bcrypt (10 rounds).
-- JWT signed with HMAC-SHA256, 24-hour expiry.
-- HWID binding — first login locks account to that device.
-- Clock rollback detection on client startup.
+- API keys are stored locally in `~/.novaghost/settings.json` and only sent to the AI provider you select. With Ollama, nothing leaves your machine.
 - Single-instance mutex prevents multiple concurrent clients.
 - Overlay excluded from screen capture (`WDA_EXCLUDEFROMCAPTURE`).
-- **Set `JWT_SECRET` in VPS `.env`** — the default fallback is public knowledge.
+- Clock rollback / config integrity checks run at startup; failures drop the app into Safe Mode (Diagnostics only).
 
 ---
 
@@ -241,11 +166,5 @@ All files written to `~/.novaghost/`:
 |------|---------|
 | `novaghost.log` | Runtime logs |
 | `crash.log` | Crash reports with stack traces |
-| `settings.json` | Persisted user preferences |
+| `settings.json` | Persisted user preferences and API keys |
 | `test.log` | Last diagnostics run output |
-
----
-
-## Server Deployment
-
-See `DEPLOY.md` for full VPS setup guide.

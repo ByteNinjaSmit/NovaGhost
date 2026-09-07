@@ -34,7 +34,7 @@ _STATUS_ICONS = {
 
 _PHASE_NAMES = [
     "Startup",
-    "Authentication",
+    "API Configuration",
     "Dependencies",
     "Capture System",
     "Gesture System",
@@ -303,10 +303,6 @@ class DiagnosticsView(ctk.CTkFrame):
 
     def _on_run_clicked(self) -> None:
         if self._running:
-            return
-        toplevel = self.winfo_toplevel()
-        if not getattr(toplevel, "is_authenticated", False) and not safe_mode.is_active():
-            logger.warning("Diagnostics run blocked for unauthenticated session.")
             return
         self._reset_phase_display()
         self._run_diagnostics()

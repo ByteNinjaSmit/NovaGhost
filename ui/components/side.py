@@ -1,26 +1,29 @@
 import threading
 import customtkinter as ctk
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict
 
 from config import config
 from services import status_service
 
 class Sidebar(ctk.CTkFrame):
     HEALTH_ITEMS = [
-        ("internet",   "Internet"),
-        ("server",     "Auth Server"),
-        ("database",   "Database"),
+        ("internet",      "Internet"),
         ("visual_system", "Visual System"),
-        ("ai_engine",  "AI Engine"),
-        ("storage",    "Storage"),
-        ("update",     "Updates"),
+        ("ai_engine",     "AI Engine"),
+        ("storage",       "Storage"),
+    ]
+
+    NAV_ITEMS = [
+        ("dash",  "  Dashboard",     2),
+        ("pref",  "  Preferences",   3),
+        ("notes", "  Release Notes", 4),
+        ("diag",  "  Diagnostics",   5),
     ]
 
     def __init__(
         self,
         parent,
         on_nav: Callable[[str], None],
-        on_logout: Callable,
         on_diagnostics: Callable,
         **kwargs
     ):
@@ -34,11 +37,9 @@ class Sidebar(ctk.CTkFrame):
             **kwargs
         )
         self.on_nav = on_nav
-        self.on_logout = on_logout
         self.on_diagnostics = on_diagnostics
         self._nav_buttons: Dict[str, ctk.CTkButton] = {}
         self._health_indicators: Dict[str, ctk.CTkLabel] = {}
-        self._is_admin = False
         self._build()
 
     def _build(self) -> None:
@@ -55,14 +56,7 @@ class Sidebar(ctk.CTkFrame):
             text_color="#6B7280",
             font=ctk.CTkFont(family="Segoe UI Variable", size=10, weight="bold")
         ).grid(row=1, column=0, padx=20, pady=(0, 16))
-        nav_items = [
-            ("dash",  "  Dashboard",         2),
-            ("sub",   "  Account & Devices", 3),
-            ("pref",  "  Preferences",       4),
-            ("notes", "  Release Notes",     5),
-            ("diag",  "  Diagnostics",       6),
-        ]
-        for tab, label, row in nav_items:
+        for tab, label, row in self.NAV_ITEMS:
             btn = ctk.CTkButton(
                 self,
                 text=label,
@@ -77,36 +71,8 @@ class Sidebar(ctk.CTkFrame):
             )
             btn.grid(row=row, column=0, padx=12, pady=2, sticky="ew")
             self._nav_buttons[tab] = btn
-        admin_btn = ctk.CTkButton(
-            self,
-            text="  Admin Portal",
-            anchor="w",
-            fg_color="transparent",
-            text_color="#9CA3AF",
-            hover_color="#12141C",
-            corner_radius=8,
-            height=36,
-            command=lambda: self._on_nav_click("admin"),
-            font=ctk.CTkFont(family="Segoe UI Variable", size=12, weight="bold")
-        )
-        self._nav_buttons["admin"] = admin_btn
         self._build_health_panel()
         self._build_client_panel()
-        logout_btn = ctk.CTkButton(
-            self,
-            text="  Log Out",
-            anchor="w",
-            fg_color="transparent",
-            text_color="#EF4444",
-            hover_color="#2A1414",
-            corner_radius=8,
-            height=36,
-            command=self.on_logout,
-            font=ctk.CTkFont(family="Segoe UI Variable", size=12, weight="bold")
-        )
-        logout_btn.grid(row=11, column=0, padx=12, pady=(0, 12), sticky="s")
-        self._logout_btn = logout_btn
-        logout_btn.grid_remove()
 
     def _build_health_panel(self) -> None:
         health_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -139,7 +105,7 @@ class Sidebar(ctk.CTkFrame):
 
     def _build_client_panel(self) -> None:
         client_frame = ctk.CTkFrame(self, fg_color="transparent")
-        client_frame.grid(row=10, column=0, padx=12, pady=(5, 5), sticky="ew")
+        client_frame.grid(row=10, column=0, padx=12, pady=(5, 12), sticky="ew")
         ctk.CTkLabel(
             client_frame,
             text="CLIENT INFO",
@@ -157,56 +123,32 @@ class Sidebar(ctk.CTkFrame):
             client_frame, text=f"Version: {config.CURRENT_VERSION}", **label_style
         )
         self._lbl_version.pack(fill="x", padx=5)
-        self._lbl_role = ctk.CTkLabel(
-            client_frame, text="Role: —", **label_style
+        self._lbl_provider = ctk.CTkLabel(
+            client_frame, text=f"Provider: {config.ACTIVE_PROVIDER}", **label_style
         )
-        self._lbl_role.pack(fill="x", padx=5)
-        self._lbl_credits = ctk.CTkLabel(
-            client_frame, text="Credits: —", **label_style
+        self._lbl_provider.pack(fill="x", padx=5)
+        self._lbl_model = ctk.CTkLabel(
+            client_frame, text=f"Model: {config.ACTIVE_MODEL}", **label_style
         )
-        self._lbl_credits.pack(fill="x", padx=5)
-        self._lbl_session = ctk.CTkLabel(
-            client_frame, text="Session: Inactive", **label_style
-        )
-        self._lbl_session.pack(fill="x", padx=5)
+        self._lbl_model.pack(fill="x", padx=5)
 
-    def show_logged_out(self) -> None:
-        for key, btn in self._nav_buttons.items():
-            btn.grid_remove()
-        self._logout_btn.grid_remove()
-        self._lbl_role.configure(text="Role: —")
-        self._lbl_credits.configure(text="Credits: —")
-        self._lbl_session.configure(text="Session: Inactive")
-
-    def show_logged_in(self, user_data: dict, is_admin: bool = False) -> None:
-        self._is_admin = is_admin
-        for tab in ["dash", "sub", "pref", "notes", "diag"]:
+    def show_nav(self) -> None:
+        for tab, _, row in self.NAV_ITEMS:
             self._nav_buttons[tab].grid(
-                row={"dash": 2, "sub": 3, "pref": 4, "notes": 5, "diag": 6}[tab],
-                column=0, padx=12, pady=2, sticky="ew"
+                row=row, column=0, padx=12, pady=2, sticky="ew"
             )
-        if is_admin:
-            self._nav_buttons["admin"].grid(
-                row=7, column=0, padx=12, pady=2, sticky="ew"
-            )
-        else:
-            self._nav_buttons["admin"].grid_remove()
-        self._logout_btn.grid(row=11, column=0, padx=12, pady=(0, 12), sticky="s")
-        role = user_data.get("role", "user").capitalize()
-        self._lbl_role.configure(text=f"Role: {role}")
-        self._lbl_session.configure(text="Session: Active")
+        self.refresh_client_info()
 
-    def update_credits_display(self, credits_display: str) -> None:
-        self._lbl_credits.configure(text=f"Credits: {credits_display}")
+    def refresh_client_info(self) -> None:
+        self._lbl_provider.configure(text=f"Provider: {config.ACTIVE_PROVIDER}")
+        self._lbl_model.configure(text=f"Model: {config.ACTIVE_MODEL}")
 
     def set_active_tab(self, tab_name: str) -> None:
         tab_colors = {
             "dash":  ("#1E1C2E", "#6366F1"),
-            "sub":   ("#12251B", "#22C55E"),
             "pref":  ("#1E1C2E", "#6366F1"),
             "notes": ("#1E1C2E", "#9CA3AF"),
             "diag":  ("#1B1A10", "#F59E0B"),
-            "admin": ("#2A1621", "#EC4899"),
         }
         for key, btn in self._nav_buttons.items():
             if key == tab_name:
@@ -246,6 +188,8 @@ class Sidebar(ctk.CTkFrame):
             height=30
         )
         indicator.grid(row=0, column=0, padx=12, pady=(4, 0), sticky="ew")
+        # In safe mode only Diagnostics is reachable.
+        self._nav_buttons["diag"].grid(row=5, column=0, padx=12, pady=2, sticky="ew")
 
     def _on_nav_click(self, tab_name: str) -> None:
         self.set_active_tab(tab_name)

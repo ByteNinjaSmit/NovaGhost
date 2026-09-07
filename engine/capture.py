@@ -24,6 +24,13 @@ class ScreenCaptureManager:
             root = tk.Toplevel(tk._default_root)
         else:
             root = tk.Tk()
+        # Cover the full (physical) screen. With process DPI awareness set at
+        # startup, winfo_screen* report real pixels, so this spans the whole
+        # panel up to and beyond 3200x2000 and the coordinates match capture.
+        root.update_idletasks()
+        screen_w = root.winfo_screenwidth()
+        screen_h = root.winfo_screenheight()
+        root.geometry(f"{screen_w}x{screen_h}+0+0")
         root.attributes("-alpha", 0.3)
         root.attributes("-fullscreen", True)
         root.attributes("-topmost", True)
@@ -67,7 +74,7 @@ class ScreenCaptureManager:
         if not crop_box or len(crop_box) != 4:
             return False
         try:
-            screen_w, screen_h = ImageGrab.grab().size
+            screen_w, screen_h = ImageGrab.grab(all_screens=True).size
             x1, y1, x2, y2 = crop_box
             return (0 <= x1 < x2 <= screen_w) and (0 <= y1 < y2 <= screen_h)
         except Exception:
@@ -77,12 +84,12 @@ class ScreenCaptureManager:
         try:
             if self.config.CROP_BOX:
                 if self.is_crop_box_valid(self.config.CROP_BOX):
-                    return ImageGrab.grab(bbox=self.config.CROP_BOX)
+                    return ImageGrab.grab(bbox=self.config.CROP_BOX, all_screens=True)
                 else:
                     self.request_screen_selection()
                     if self.config.CROP_BOX and self.is_crop_box_valid(self.config.CROP_BOX):
-                        return ImageGrab.grab(bbox=self.config.CROP_BOX)
-            return ImageGrab.grab()
+                        return ImageGrab.grab(bbox=self.config.CROP_BOX, all_screens=True)
+            return ImageGrab.grab(all_screens=True)
         except Exception as e:
             logger.error(f"Capture failed: {e}")
             return None

@@ -23,13 +23,6 @@ build/
 dist/
 *.spec.bak
 
-# ── Node / Server ───────────────────────────────────────────────────────────────
-server/node_modules/
-server/package-lock.json
-server/*.db
-server/*.db-shm
-server/*.db-wal
-
 # ── SQLite ──────────────────────────────────────────────────────────────────────
 *.db
 *.db-shm
