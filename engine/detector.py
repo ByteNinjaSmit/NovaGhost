@@ -1,9 +1,16 @@
 import time
 import logging
 from typing import Callable, Optional
-from pynput.mouse import Listener
 
 logger = logging.getLogger(__name__)
+
+try:
+    from pynput.mouse import Listener
+    HAS_PYNPUT = True
+except ImportError:
+    Listener = None
+    HAS_PYNPUT = False
+    logger.warning("pynput not installed — mouse gesture listener unavailable.")
 
 class InputDetector:
     def __init__(self, tap_window: float = 0.5, detection_radius: int = 50):
@@ -41,8 +48,11 @@ class InputDetector:
 
     def start(self):
         self.running = True
-        self.listener = Listener(on_click=self._on_click)
-        self.listener.start()
+        if HAS_PYNPUT and Listener:
+            self.listener = Listener(on_click=self._on_click)
+            self.listener.start()
+        else:
+            logger.info("InputDetector started in dummy/manual mode (pynput not installed).")
 
     def stop(self):
         self.running = False

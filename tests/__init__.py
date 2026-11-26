@@ -1,0 +1,3 @@
+"""
+NovaGhost Test Suite.
+"""

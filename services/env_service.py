@@ -31,10 +31,12 @@ class EnvService:
     def verify_python_libs() -> Dict[str, bool]:
         libs = {
             "customtkinter": False,
-            "numpy": False,
             "PIL": False,
             "requests": False,
-            "pynput": False
+            "pynput": False,
+            "cv2": False,
+            "numpy": False,
+            "sympy": False
         }
         for lib in list(libs.keys()):
             try:
@@ -46,7 +48,9 @@ class EnvService:
 
     def verify_environment(self) -> Dict[str, Any]:
         libs = self.verify_python_libs()
-        libs_ok = all(libs.values())
+        # Core mandatory libs
+        core_libs = ["customtkinter", "PIL", "requests", "pynput"]
+        libs_ok = all(libs.get(lib, False) for lib in core_libs)
         storage_ok = False
         try:
             config.LOG_DIR.mkdir(parents=True, exist_ok=True)

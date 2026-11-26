@@ -44,7 +44,7 @@ class Config:
     INJECT_Y: int = 80
     INJECT_WIDTH: int = 1200
     INJECT_MAX_HEIGHT: int = 400
-    MAX_RESPONSE_LENGTH: int = 300
+    MAX_RESPONSE_LENGTH: int = 2000
     API_TIMEOUT: int = 20
     GLOBAL_SHORTCUT: str = os.getenv("GLOBAL_SHORTCUT", "Ctrl+Shift+S")
     HIDE_PROCESS: bool = os.getenv("HIDE_PROCESS", "true").lower() == "true"

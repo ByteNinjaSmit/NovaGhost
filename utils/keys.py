@@ -1,7 +1,14 @@
 import logging
-from pynput import keyboard
 
 logger = logging.getLogger("HotkeyManager")
+
+try:
+    from pynput import keyboard
+    HAS_PYNPUT = True
+except ImportError:
+    keyboard = None
+    HAS_PYNPUT = False
+    logger.warning("pynput not installed — global hotkey listener disabled until pynput is installed.")
 
 class GlobalHotkeyManager:
     def __init__(self, shortcut: str, callback: callable):
@@ -14,6 +21,9 @@ class GlobalHotkeyManager:
 
     def start(self):
         self.stop()
+        if not HAS_PYNPUT or not keyboard:
+            logger.warning("Cannot start hotkey listener: pynput is not installed.")
+            return
         pynput_shortcut = self._to_pynput(self.shortcut)
         hotkey_dict = {}
         hotkey_dict[pynput_shortcut] = self.callback

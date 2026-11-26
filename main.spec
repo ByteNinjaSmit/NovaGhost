@@ -13,7 +13,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['numpy', 'scipy', 'pandas', 'matplotlib', 'IPython', 'pytest', 'setuptools'],
+    excludes=['scipy', 'pandas', 'matplotlib', 'IPython', 'pytest', 'setuptools'],
     noarchive=False,
     optimize=0,
 )
